@@ -1,0 +1,13 @@
+Pasta opcional para os arquivos .xsd do layout nacional da NFS-e.
+
+Se voce baixar os schemas oficiais do Portal Nacional (area de documentacao
+tecnica em https://www.gov.br/nfse) e colocar os arquivos aqui, o sistema passa
+a conferir cada XML contra o schema antes de enviar. Assim os erros de
+preenchimento aparecem no log com o nome do campo, em vez de virem como
+rejeicao do Portal.
+
+O arquivo principal e o DPS_v1.00.xsd (mantenha junto os arquivos que ele
+importa, como o de tipos basicos).
+
+Sem os arquivos, essa conferencia extra e simplesmente pulada - o sistema
+continua funcionando normalmente.

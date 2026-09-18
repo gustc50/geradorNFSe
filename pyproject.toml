@@ -1,0 +1,16 @@
+[project]
+name = "gerador-nfse"
+version = "1.0.0"
+description = "Gerador de NFS-e pelo Portal Nacional a partir de planilha do Excel"
+requires-python = ">=3.10"
+dependencies = [
+    "openpyxl>=3.1.0",
+    "lxml>=4.9.0",
+    "requests>=2.31.0",
+    "cryptography>=41.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"

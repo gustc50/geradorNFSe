@@ -1,0 +1,28 @@
+# Dados sensíveis - NUNCA versionar
+dados/
+saida/
+*.pfx
+*.p12
+*.pem
+*.key
+chave.key
+salt.bin
+empresas.json
+
+# Planilhas de trabalho (o modelo fica em modelos/)
+*.xlsx
+!modelos/*.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv*/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Sistema
+.DS_Store
+Thumbs.db

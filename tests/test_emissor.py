@@ -10,7 +10,7 @@ from nfse.assinatura import verificar_assinatura
 from nfse.config import Configuracao, Empresa
 from nfse.emissor import STATUS_EMITIDA, STATUS_ERRO, Emissor
 
-CHAVE = "3" * 50
+CHAVE = "35503082" + "2" + "11222333000181" + "0" * 27   # estrutura de chave real
 
 NOTA_VALIDA = {
     "Tipo doc. tomador": "CNPJ",

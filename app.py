@@ -175,6 +175,8 @@ class AbaEmpresa(ttk.Frame):
                         command=self._atualizar_aviso_ambiente).pack(side="left", padx=10)
         self.rotulo_ambiente = tk.Label(ambiente, text="", font=("Segoe UI", 9, "bold"))
         self.rotulo_ambiente.pack(side="left", padx=10)
+        self.rotulo_layout = tk.Label(ambiente, text="", fg="#555555", font=("Segoe UI", 8))
+        self.rotulo_layout.pack(side="left", padx=4)
 
         ttk.Button(grupo, text="Salvar dados da empresa",
                    command=self.salvar).grid(row=5, column=0, columnspan=2,
@@ -335,7 +337,7 @@ class AbaEmpresa(ttk.Frame):
     def _recolher_para_empresa(self) -> None:
         e = self.empresa
         e.razao_social = util.texto(self.var_razao.get())
-        e.cnpj = util.so_digitos(self.var_cnpj.get())
+        e.cnpj = util.so_alfanumerico(self.var_cnpj.get())   # aceita CNPJ alfanumerico
         e.inscricao_municipal = util.texto(self.var_im.get())
         e.codigo_municipio = util.so_digitos(self.var_municipio.get())
         e.serie_padrao = util.texto(self.var_serie.get()) or "1"
@@ -389,6 +391,11 @@ class AbaEmpresa(ttk.Frame):
             text="ATENCAO: as notas terao valor fiscal" if producao
             else "Ambiente de teste: nada tem valor fiscal",
             fg=COR_PRODUCAO if producao else COR_HOMOLOGACAO)
+        try:
+            layout = tabelas.layout_para(self.var_ambiente.get(), self.empresa.layout)
+            self.rotulo_layout.configure(text=f"| layout: {tabelas.LAYOUTS[layout]}")
+        except ValueError:
+            self.rotulo_layout.configure(text="")
 
     def _atualizar_rotulo_certificado(self) -> None:
         if not self.empresa.tem_certificado():
@@ -510,7 +517,7 @@ class AbaEmpresa(ttk.Frame):
             self.na_tela(self.var_chave.set, lote.emitidas[-1].chave_acesso)
 
     def consultar(self) -> None:
-        chave = util.so_digitos(self.var_chave.get())
+        chave = util.so_alfanumerico(self.var_chave.get())
         if not chave:
             messagebox.showwarning(TITULO, "Informe a chave de acesso da nota.")
             return
@@ -525,7 +532,7 @@ class AbaEmpresa(ttk.Frame):
         self.registrar(f"[ok] Consulta concluida: {resposta}")
 
     def baixar_danfse(self) -> None:
-        chave = util.so_digitos(self.var_chave.get())
+        chave = util.so_alfanumerico(self.var_chave.get())
         if not chave:
             messagebox.showwarning(TITULO, "Informe a chave de acesso da nota.")
             return
@@ -540,7 +547,7 @@ class AbaEmpresa(ttk.Frame):
         self.registrar(f"[ok] DANFSe salva em {arquivo}")
 
     def cancelar(self) -> None:
-        chave = util.so_digitos(self.var_chave.get())
+        chave = util.so_alfanumerico(self.var_chave.get())
         if not chave:
             messagebox.showwarning(TITULO, "Informe a chave de acesso da nota.")
             return

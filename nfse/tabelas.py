@@ -7,6 +7,8 @@ Os codigos foram conferidos contra os schemas oficiais do layout nacional
 
 from __future__ import annotations
 
+from datetime import date
+
 # --------------------------------------------------------------------------- #
 # Ambientes da API do Portal Nacional (Sefin Nacional)
 # --------------------------------------------------------------------------- #
@@ -199,3 +201,43 @@ def codigo_da_opcao(valor) -> str:
     if " - " in s:
         s = s.split(" - ", 1)[0].strip()
     return s
+
+
+# --------------------------------------------------------------------------- #
+# Layouts da DPS
+# --------------------------------------------------------------------------- #
+# A Nota Tecnica SE/CGNFS-e 009 mudou o layout: finNFSe passou a ser obrigatorio
+# no infDPS, xDescServ foi para o fim do cServ e as deducoes (vDedRed) viraram
+# vAjusteBC. A homologacao (producao restrita) exige o layout novo desde
+# 20/10/2026; a producao segue no anterior ate 30/11/2026.
+LAYOUT_ANTERIOR = "anterior"
+LAYOUT_NT009 = "nt009"
+LAYOUT_AUTOMATICO = "automatico"
+
+LAYOUTS = {
+    LAYOUT_AUTOMATICO: "Automatico (pelo ambiente e pela data)",
+    LAYOUT_ANTERIOR: "Anterior a NT 009",
+    LAYOUT_NT009: "NT 009 (finNFSe no infDPS)",
+}
+
+# Data PREVISTA para a producao passar a exigir a NT 009. Se o Portal adiar, o
+# sistema percebe pela recusa de schema (E1235) e reenvia no layout anterior.
+INICIO_NT009_PRODUCAO = date(2026, 12, 1)
+
+
+def layout_para(nome_ambiente: str, preferencia: str = LAYOUT_AUTOMATICO,
+                hoje: date | None = None) -> str:
+    """Decide qual layout de DPS usar."""
+    escolha = (preferencia or LAYOUT_AUTOMATICO).strip().lower()
+    if escolha in (LAYOUT_ANTERIOR, LAYOUT_NT009):
+        return escolha
+    if escolha != LAYOUT_AUTOMATICO:
+        raise ValueError(f"Layout invalido: {preferencia!r}. Use: {', '.join(LAYOUTS)}.")
+    if ambiente(nome_ambiente)["chave"] == "homologacao":
+        return LAYOUT_NT009
+    hoje = hoje or date.today()
+    return LAYOUT_NT009 if hoje >= INICIO_NT009_PRODUCAO else LAYOUT_ANTERIOR
+
+
+def outro_layout(layout: str) -> str:
+    return LAYOUT_ANTERIOR if layout == LAYOUT_NT009 else LAYOUT_NT009

@@ -38,10 +38,14 @@ def test_montagem_basica(empresa, nota):
 
 
 def test_ordem_dos_elementos_segue_o_layout(empresa, nota):
-    xml, _ = dps.montar_xml(nota, empresa)
-    filhos = [etree.QName(e).localname for e in etree.fromstring(xml).find("n:infDPS", NS)]
-    assert filhos == ["tpAmb", "dhEmi", "verAplic", "serie", "nDPS", "dCompet",
-                      "tpEmit", "cLocEmi", "prest", "toma", "serv", "valores"]
+    from nfse import tabelas
+    base = ["tpAmb", "dhEmi", "verAplic", "serie", "nDPS", "dCompet", "tpEmit"]
+    resto = ["cLocEmi", "prest", "toma", "serv", "valores"]
+    for layout, esperado in ((tabelas.LAYOUT_ANTERIOR, base + resto),
+                             (tabelas.LAYOUT_NT009, base + ["finNFSe"] + resto)):
+        xml, _ = dps.montar_xml(nota, empresa, layout=layout)
+        filhos = [etree.QName(e).localname for e in etree.fromstring(xml).find("n:infDPS", NS)]
+        assert filhos == esperado, layout
 
 
 def test_endereco_nacional_do_tomador(empresa, nota):
@@ -78,7 +82,7 @@ def test_descontos_e_deducoes(empresa, nota):
     nota.desconto_incondicionado = Decimal("100")
     nota.desconto_condicionado = Decimal("50")
     nota.valor_deducoes = Decimal("200")
-    xml, _ = dps.montar_xml(nota, empresa)
+    xml, _ = dps.montar_xml(nota, empresa, layout="anterior")
     assert valor(xml, "n:infDPS/n:valores/n:vDescCondIncond/n:vDescIncond") == "100.00"
     assert valor(xml, "n:infDPS/n:valores/n:vDescCondIncond/n:vDescCond") == "50.00"
     assert valor(xml, "n:infDPS/n:valores/n:vDedRed/n:vDR") == "200.00"
@@ -203,7 +207,7 @@ def test_evento_de_cancelamento(empresa):
 
 
 def test_cancelamento_recusa_chave_invalida(empresa):
-    with pytest.raises(ErroDeValidacao, match="50 digitos"):
+    with pytest.raises(ErroDeValidacao, match="50 caracteres"):
         dps.montar_evento_cancelamento(empresa, "123", "1", "Valor digitado errado")
 
 
@@ -260,3 +264,9 @@ def test_data_de_emissao_no_futuro_e_recusada(empresa, nota):
     from nfse import util
     nota.data_emissao = util.agora() + timedelta(days=2)
     assert any("futuro" in p for p in dps.validar(nota, empresa))
+
+
+def test_serie_reservada_na_nt009(empresa, nota):
+    nota.serie = "95000"
+    assert any("reservada" in p for p in dps.validar(nota, empresa, "nt009"))
+    assert not any("reservada" in p for p in dps.validar(nota, empresa, "anterior"))

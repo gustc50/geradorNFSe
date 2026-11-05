@@ -20,7 +20,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Callable
 
-from . import assinatura, dps, esquema, planilha as mod_planilha, util
+from . import assinatura, dps, esquema, planilha as mod_planilha, tabelas, util
 from .api import ClienteNFSe, ErroDaApi
 from .certificado import ErroDeCertificado, InfoCertificado, ler_certificado
 from .config import Configuracao, Empresa
@@ -29,6 +29,11 @@ from .util import ErroDeValidacao
 STATUS_EMITIDA = "EMITIDA"
 STATUS_ERRO = "ERRO"
 STATUS_SIMULADA = "SIMULADA"
+
+# Elementos que mudaram de lugar entre o layout anterior e a NT 009. Uma recusa
+# de schema (E1235) citando um deles indica que o Portal espera o OUTRO layout.
+ELEMENTOS_DE_LAYOUT = ("finNFSe", "cMotivoEmisTI", "chNFSeRej", "xDescServ", "cNBS",
+                       "cIntContrib", "vDedRed", "vAjusteBC", "cLocEmi")
 
 Progresso = Callable[[str], None]
 
@@ -98,6 +103,8 @@ class Emissor:
         self.diretorio_saida.mkdir(parents=True, exist_ok=True)
         self.simular = simular
         self.progresso = progresso or (lambda _: None)
+        # Layout que o Portal ja aceitou nesta execucao, por (empresa, ambiente).
+        self._layout_confirmado: dict[tuple[str, str], str] = {}
 
     # ------------------------------------------------------------------ #
     def _avisar(self, mensagem: str) -> None:
@@ -129,6 +136,30 @@ class Emissor:
         return info
 
     # ------------------------------------------------------------------ #
+    def layout_da_empresa(self, empresa: Empresa) -> str:
+        chave = (empresa.nome, empresa.ambiente)
+        return self._layout_confirmado.get(chave) or empresa.layout_efetivo()
+
+    @staticmethod
+    def _recusa_por_layout(exc: ErroDaApi) -> bool:
+        """O Portal recusou o schema por causa de um campo que mudou na NT 009?"""
+        texto = exc.detalhado()
+        return (exc.status == 400 and "E1235" in texto
+                and any(elemento in texto for elemento in ELEMENTOS_DE_LAYOUT))
+
+    @staticmethod
+    def _preparar_xml(nota: dps.Nota, empresa: Empresa, certificado: InfoCertificado,
+                      layout: str) -> tuple[bytes, str]:
+        """Monta, assina, confere a assinatura e valida no XSD do layout."""
+        xml_dps, id_dps = dps.montar_xml(nota, empresa, layout=layout)
+        xml_assinado = assinatura.assinar_xml(xml_dps, id_dps, certificado)
+        assinatura.verificar_assinatura(xml_assinado)   # autoteste antes de enviar
+        problemas_xsd = esquema.validar(xml_assinado, "DPS", layout=layout)
+        if problemas_xsd:
+            raise ErroDeValidacao(
+                "O XML nao bate com o schema oficial: " + "; ".join(problemas_xsd))
+        return xml_assinado, id_dps
+
     def emitir_nota(self, empresa: Empresa, certificado: InfoCertificado,
                     nota: dps.Nota, cliente: ClienteNFSe | None = None) -> ResultadoNota:
         """Emite uma unica nota. Nunca levanta excecao: devolve o resultado."""
@@ -142,15 +173,8 @@ class Emissor:
 
         pasta = self._pasta_da_empresa(empresa)
         try:
-            xml_dps, id_dps = dps.montar_xml(nota, empresa)
-            xml_assinado = assinatura.assinar_xml(xml_dps, id_dps, certificado)
-            assinatura.verificar_assinatura(xml_assinado)   # autoteste antes de enviar
-
-            # Conferencia contra o schema oficial (schemas/DPS_v*.xsd).
-            problemas_xsd = esquema.validar(xml_assinado, "DPS")
-            if problemas_xsd:
-                raise ErroDeValidacao(
-                    "O XML nao bate com o schema oficial: " + "; ".join(problemas_xsd))
+            layout = self.layout_da_empresa(empresa)
+            xml_assinado, id_dps = self._preparar_xml(nota, empresa, certificado, layout)
 
             arquivo_dps = pasta / f"DPS-{id_dps}.xml"
             arquivo_dps.write_bytes(xml_assinado)
@@ -165,7 +189,29 @@ class Emissor:
                 return resultado
 
             cliente = cliente or ClienteNFSe(empresa, certificado)
-            resposta = cliente.emitir(xml_assinado)
+            try:
+                resposta = cliente.emitir(xml_assinado)
+            except ErroDaApi as exc:
+                # Recusa de schema por layout: a DPS NAO foi aceita, entao e seguro
+                # reenviar uma unica vez no outro layout, com o mesmo numero.
+                automatico = (empresa.layout or tabelas.LAYOUT_AUTOMATICO) == \
+                    tabelas.LAYOUT_AUTOMATICO
+                if not (automatico and self._recusa_por_layout(exc)):
+                    raise
+                novo = tabelas.outro_layout(layout)
+                self._avisar(
+                    f"  [aviso] linha {nota.linha}: o Portal recusou o layout "
+                    f"'{tabelas.LAYOUTS[layout]}'. Reenviando no layout "
+                    f"'{tabelas.LAYOUTS[novo]}'.")
+                xml_assinado, id_dps = self._preparar_xml(nota, empresa, certificado, novo)
+                arquivo_dps.write_bytes(xml_assinado)
+                try:
+                    resposta = cliente.emitir(xml_assinado)
+                except ErroDaApi as exc2:
+                    raise ErroDaApi(
+                        f"{exc2.detalhado()} || Antes, no layout '{tabelas.LAYOUTS[layout]}': "
+                        f"{exc.detalhado()}", status=exc2.status) from exc2
+                self._layout_confirmado[(empresa.nome, empresa.ambiente)] = novo
 
             resultado.status = STATUS_EMITIDA
             resultado.chave_acesso = resposta.chave_acesso
@@ -251,7 +297,8 @@ class Emissor:
                 continue
 
             self._avisar(f"[{nome_aba}] {len(aba.notas)} nota(s) a emitir "
-                         f"({empresa.ambiente}).")
+                         f"({empresa.ambiente}, layout "
+                         f"{tabelas.LAYOUTS[self.layout_da_empresa(empresa)]}).")
             try:
                 certificado = self.abrir_certificado(empresa)
             except ErroDeCertificado as exc:
@@ -330,7 +377,8 @@ class Emissor:
         xml_evento, id_evento = dps.montar_evento_cancelamento(
             empresa, chave_acesso, codigo_motivo, motivo)
         xml_assinado = assinatura.assinar_xml(xml_evento, id_evento, certificado)
-        problemas_xsd = esquema.validar(xml_assinado, "pedRegEvento")
+        problemas_xsd = esquema.validar(xml_assinado, "pedRegEvento",
+                                        layout=self.layout_da_empresa(empresa))
         if problemas_xsd:
             raise ErroDeValidacao(
                 "O evento nao bate com o schema oficial: " + "; ".join(problemas_xsd))

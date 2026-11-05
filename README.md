@@ -205,7 +205,8 @@ geradorNFSe/
 
 ## Detalhes técnicos
 
-- **DPS layout nacional versão 1.01**, namespace `http://www.sped.fazenda.gov.br/nfse`.
+- **DPS layout nacional versão 1.01**, namespace `http://www.sped.fazenda.gov.br/nfse`,
+  em dois layouts (ver abaixo).
 - **Assinatura** XMLDSig *enveloped* sobre `infDPS`: canonicalização C14N 1.0
   inclusiva, digest SHA-1, assinatura RSA-SHA1, `KeyInfo` com o certificado.
   A assinatura é conferida localmente antes de cada envio.
@@ -224,15 +225,36 @@ geradorNFSe/
   (timeout), o número é considerado usado e a mensagem orienta a consultar antes
   de reenviar.
 
+### Layouts: anterior e NT 009
+
+A Nota Técnica SE/CGNFS-e 009 mudou o layout da DPS: `finNFSe` passou a ser
+obrigatório no `infDPS`, a descrição do serviço foi para o fim do `cServ`, as
+deduções viraram `vAjusteBC`, o CNPJ alfanumérico passou a ser aceito e as séries
+de 90000 a 99999 ficaram reservadas.
+
+| Ambiente | Até 30/11/2026 | A partir de 01/12/2026 (previsto) |
+|---|---|---|
+| Homologação | NT 009 (exigido desde 20/10/2026) | NT 009 |
+| Produção | Anterior | NT 009 |
+
+O sistema escolhe sozinho (`layout = automatico`). Se o Portal recusar o XML por
+schema (`E1235`) apontando um campo que mudou entre os layouts, a nota é
+reenviada **uma vez** no outro layout, com o mesmo número — a recusa de schema
+garante que a DPS não foi aceita. Isso cobre um eventual adiamento da data de
+produção. Para fixar um layout:
+`python nfse_cli.py empresas editar "EMPRESA" --layout nt009` (ou `anterior`).
+
+Os XSD de cada layout ficam em `schemas/anterior/` e `schemas/nt009/`.
+
 ### Rodar os testes
 
 ```bash
 .venv/bin/python -m pytest
 ```
 
-São 168 testes cobrindo conversão de dados, cofre de senhas, leitura do
+São 219 testes cobrindo conversão de dados, cofre de senhas, leitura do
 certificado, assinatura digital (inclusive detecção de adulteração), montagem
-do XML em 30+ cenários validados contra o **schema oficial**, leitura/gravação da
+do XML em 30+ cenários validados contra o **schema oficial dos dois layouts**, leitura/gravação da
 planilha, cliente da API, emissão em lote e um roteiro completo da interface
 gráfica (pulado em máquinas sem tela).
 

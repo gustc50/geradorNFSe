@@ -1,8 +1,9 @@
-"""Todo XML gerado precisa passar no schema oficial (schemas/*.xsd).
+"""Todo XML gerado precisa passar no schema oficial, nos DOIS layouts.
 
-Estes testes usam os XSD do layout nacional que acompanham o projeto: se o
-sistema montar algum campo fora de ordem ou de formato, o Portal rejeitaria a
-nota, e o teste falha antes disso.
+Os XSD ficam em schemas/anterior (producao ate 30/11/2026) e schemas/nt009
+(homologacao desde 20/10/2026, producao a partir de 01/12/2026). Se o sistema
+montar algum campo fora de ordem ou de formato, o Portal rejeitaria a nota, e o
+teste falha antes disso.
 """
 
 import copy
@@ -12,22 +13,30 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
-from nfse import dps, esquema
+from nfse import dps, esquema, tabelas
 from nfse.assinatura import assinar_xml
 
 PASTA = Path(__file__).resolve().parent.parent / "schemas"
+LAYOUTS = [tabelas.LAYOUT_ANTERIOR, tabelas.LAYOUT_NT009]
+
+# Chave com a estrutura real: municipio + tipo de inscricao (2 = CNPJ) + CNPJ ...
+CHAVE_REAL = "35503082" + "2" + "11222333000181" + "0" * 27
+
+_cache = {}
 
 
-@pytest.fixture(scope="module")
-def xsd_dps():
-    arquivo = esquema.localizar("DPS", PASTA)
-    assert arquivo is not None, "os XSD oficiais devem estar em schemas/"
-    return etree.XMLSchema(etree.parse(str(arquivo)))
+def xsd(layout, base):
+    if (layout, base) not in _cache:
+        arquivo = esquema.localizar(base, PASTA / layout)
+        assert arquivo is not None, f"XSD oficial ausente em schemas/{layout}"
+        _cache[(layout, base)] = etree.XMLSchema(etree.parse(str(arquivo)))
+    return _cache[(layout, base)]
 
 
-@pytest.fixture(scope="module")
-def xsd_evento():
-    return etree.XMLSchema(etree.parse(str(esquema.localizar("pedRegEvento", PASTA))))
+def conferir(xml, layout, base="DPS"):
+    esquema_oficial = xsd(layout, base)
+    assert esquema_oficial.validate(etree.fromstring(xml)), "\n".join(
+        e.message for e in esquema_oficial.error_log)
 
 
 def _aplicar(objeto, alteracoes):
@@ -78,7 +87,7 @@ CENARIOS_NOTA = {
         tomador_cep_exterior="33101", tomador_cep="", tomador_codigo_municipio="",
         tributacao_issqn="2", codigo_pais_resultado="US", aliquota_iss=None),
     "servico prestado no exterior": dict(codigo_pais_prestacao="PT"),
-    "serie e numero no limite": dict(serie="99999", numero=999999999999999),
+    "serie e numero no limite": dict(serie="89999", numero=999999999999999),
     "descricao longa com quebras": dict(descricao_servico=("Linha de servico\n" * 200)),
     "texto colado do Word/Excel": dict(
         tomador_nome="Padaria “Pão Quente” – Filial Łódź 🍞",
@@ -98,28 +107,68 @@ CENARIOS_EMPRESA = {
 }
 
 
+@pytest.mark.parametrize("layout", LAYOUTS)
 @pytest.mark.parametrize("nome", list(CENARIOS_NOTA))
-def test_nota_passa_no_schema_oficial(nome, nota, empresa, certificado, xsd_dps):
+def test_nota_passa_no_schema_oficial(nome, layout, nota, empresa, certificado):
     variante = _aplicar(nota, CENARIOS_NOTA[nome])
-    xml, identificador = dps.montar_xml(variante, empresa)
-    documento = etree.fromstring(assinar_xml(xml, identificador, certificado))
-    assert xsd_dps.validate(documento), "\n".join(e.message for e in xsd_dps.error_log)
+    xml, identificador = dps.montar_xml(variante, empresa, layout=layout)
+    conferir(assinar_xml(xml, identificador, certificado), layout)
 
 
+@pytest.mark.parametrize("layout", LAYOUTS)
 @pytest.mark.parametrize("nome", list(CENARIOS_EMPRESA))
-def test_empresa_passa_no_schema_oficial(nome, nota, empresa, certificado, xsd_dps):
+def test_empresa_passa_no_schema_oficial(nome, layout, nota, empresa, certificado):
     variante = _aplicar(empresa, CENARIOS_EMPRESA[nome])
-    xml, identificador = dps.montar_xml(nota, variante)
-    documento = etree.fromstring(assinar_xml(xml, identificador, certificado))
-    assert xsd_dps.validate(documento), "\n".join(e.message for e in xsd_dps.error_log)
+    xml, identificador = dps.montar_xml(nota, variante, layout=layout)
+    conferir(assinar_xml(xml, identificador, certificado), layout)
 
 
+@pytest.mark.parametrize("layout", LAYOUTS)
 @pytest.mark.parametrize("codigo", ["1", "2", "9"])
-def test_evento_de_cancelamento_passa_no_schema(codigo, empresa, certificado, xsd_evento):
+def test_evento_de_cancelamento_passa_no_schema(codigo, layout, empresa, certificado):
     xml, identificador = dps.montar_evento_cancelamento(
-        empresa, "3" * 50, codigo, "Valor do servico digitado errado")
-    documento = etree.fromstring(assinar_xml(xml, identificador, certificado))
-    assert xsd_evento.validate(documento), "\n".join(e.message for e in xsd_evento.error_log)
+        empresa, CHAVE_REAL, codigo, "Valor do servico digitado errado")
+    conferir(assinar_xml(xml, identificador, certificado), layout, "pedRegEvento")
+
+
+def test_layout_anterior_e_recusado_pelo_schema_da_nt009(nota, empresa):
+    """Reproduz a recusa E1235 que o Portal deu em homologacao em nov/2026."""
+    xml, _ = dps.montar_xml(nota, empresa, layout=tabelas.LAYOUT_ANTERIOR)
+    esquema_novo = xsd(tabelas.LAYOUT_NT009, "DPS")
+    assert not esquema_novo.validate(etree.fromstring(xml))
+    assert "finNFSe" in str(esquema_novo.error_log)
+
+
+def test_nt009_tem_finnfse_e_descricao_no_fim(nota, empresa):
+    nota.codigo_nbs = "115022000"
+    xml, _ = dps.montar_xml(nota, empresa, layout=tabelas.LAYOUT_NT009)
+    raiz = etree.fromstring(xml)
+    filhos = [etree.QName(e).localname for e in raiz.find("{*}infDPS")]
+    assert filhos.index("finNFSe") == filhos.index("tpEmit") + 1
+    assert raiz.find(".//{*}finNFSe").text == "0"
+    servico = [etree.QName(e).localname for e in raiz.find(".//{*}cServ")]
+    assert servico[-1] == "xDescServ"
+
+
+def test_deducoes_em_cada_layout(nota, empresa):
+    nota.valor_deducoes = D("200")
+    antigo, _ = dps.montar_xml(nota, empresa, layout=tabelas.LAYOUT_ANTERIOR)
+    novo, _ = dps.montar_xml(nota, empresa, layout=tabelas.LAYOUT_NT009)
+    assert etree.fromstring(antigo).find(".//{*}vDedRed/{*}vDR").text == "200.00"
+    assert etree.fromstring(novo).find(".//{*}vAjusteBC/{*}vAjusteBCISSQN").text == "200.00"
+
+
+def test_cnpj_alfanumerico_no_layout_nt009(nota, empresa, certificado):
+    nota.tomador_documento = "12.ABC.345/01DE-35"     # exemplo oficial da Receita
+    xml, identificador = dps.montar_xml(nota, empresa, layout=tabelas.LAYOUT_NT009)
+    assert etree.fromstring(xml).find(".//{*}toma/{*}CNPJ").text == "12ABC34501DE35"
+    conferir(assinar_xml(xml, identificador, certificado), tabelas.LAYOUT_NT009)
+
+
+def test_cnpj_alfanumerico_no_layout_anterior_e_avisado(nota, empresa):
+    nota.tomador_documento = "12.ABC.345/01DE-35"
+    problemas = dps.validar(nota, empresa, tabelas.LAYOUT_ANTERIOR)
+    assert any("alfanumerico" in p for p in problemas)
 
 
 def test_textos_sao_limpos_para_o_padrao_do_schema(nota, empresa):
@@ -140,7 +189,7 @@ def test_emissor_valida_no_schema_antes_de_enviar(config, nota, tmp_path, monkey
     from unittest.mock import patch
     from nfse.emissor import STATUS_ERRO, Emissor
 
-    monkeypatch.setattr(esquema, "validar", lambda xml, base="DPS", pasta=None: ["campo X"])
+    monkeypatch.setattr(esquema, "validar", lambda xml, base="DPS", **kw: ["campo X"])
     emissor = Emissor(config, diretorio_saida=tmp_path / "saida")
     empresa = config.obter("EMPRESA EXEMPLO")
     with patch("nfse.emissor.ClienteNFSe") as cliente:

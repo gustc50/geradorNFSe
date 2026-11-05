@@ -40,6 +40,7 @@ class Empresa:
     regime_especial: str = "0"
     tipo_emitente: str = "1"            # 1 prestador, 2 tomador, 3 intermediario
     ambiente: str = tabelas.AMBIENTE_PADRAO
+    layout: str = tabelas.LAYOUT_AUTOMATICO   # automatico | anterior | nt009
     serie_padrao: str = "1"
     proximo_numero: int = 1
     certificado_arquivo: str = ""       # caminho do .pfx dentro de dados/
@@ -53,7 +54,7 @@ class Empresa:
     # ------------------------------------------------------------------ #
     @property
     def cnpj_limpo(self) -> str:
-        return util.so_digitos(self.cnpj)
+        return util.so_alfanumerico(self.cnpj)
 
     @property
     def rotulo(self) -> str:
@@ -65,6 +66,15 @@ class Empresa:
 
     def codigo_ambiente(self) -> str:
         return tabelas.ambiente(self.ambiente)["codigo"]
+
+    def layout_efetivo(self) -> str:
+        return tabelas.layout_para(self.ambiente, self.layout)
+
+    def _layout_seguro(self) -> str:
+        try:
+            return self.layout_efetivo()
+        except ValueError:
+            return tabelas.LAYOUT_ANTERIOR
 
     def tem_certificado(self) -> bool:
         return bool(self.certificado_arquivo) and Path(self.certificado_arquivo).exists()
@@ -80,6 +90,10 @@ class Empresa:
         elif len(self.cnpj_limpo) == 14:
             if not util.cnpj_valido(self.cnpj_limpo):
                 erros.append(f"CNPJ invalido: {util.formatar_cnpj(self.cnpj_limpo)}")
+            elif (util.cnpj_alfanumerico(self.cnpj_limpo)
+                  and self._layout_seguro() == tabelas.LAYOUT_ANTERIOR):
+                erros.append("CNPJ alfanumerico so e aceito pelo Portal no layout da NT 009 "
+                             "(producao a partir de 01/12/2026).")
         elif len(self.cnpj_limpo) == 11:
             if not util.cpf_valido(self.cnpj_limpo):
                 erros.append(f"CPF invalido: {util.formatar_cpf(self.cnpj_limpo)}")
@@ -109,6 +123,7 @@ class Empresa:
 
         try:
             tabelas.ambiente(self.ambiente)
+            tabelas.layout_para(self.ambiente, self.layout)
         except ValueError as exc:
             erros.append(str(exc))
 

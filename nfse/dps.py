@@ -129,8 +129,9 @@ class Nota:
 # --------------------------------------------------------------------------- #
 # Validacao
 # --------------------------------------------------------------------------- #
-def validar(nota: Nota, empresa: Empresa) -> list[str]:
+def validar(nota: Nota, empresa: Empresa, layout: str | None = None) -> list[str]:
     """Confere a nota antes de gerar o XML. Devolve a lista de problemas."""
+    layout = layout or empresa.layout_efetivo()
     erros: list[str] = []
 
     def exigir(condicao: bool, mensagem: str) -> None:
@@ -144,8 +145,12 @@ def validar(nota: Nota, empresa: Empresa) -> list[str]:
                      f"(use {', '.join(tabelas.TIPO_DOCUMENTO_TOMADOR)}).")
     documento = util.so_digitos(nota.tomador_documento)
     if tipo == "CNPJ":
+        documento = util.so_alfanumerico(nota.tomador_documento)
         exigir(len(documento) == 14 and util.cnpj_valido(documento),
                f"CNPJ do tomador invalido: {nota.tomador_documento!r}.")
+        if util.cnpj_alfanumerico(documento) and layout == tabelas.LAYOUT_ANTERIOR:
+            erros.append("CNPJ alfanumerico do tomador so e aceito no layout da NT 009 "
+                         "(producao a partir de 01/12/2026).")
     elif tipo == "CPF":
         exigir(len(documento) == 11 and util.cpf_valido(documento),
                f"CPF do tomador invalido: {nota.tomador_documento!r}.")
@@ -279,9 +284,13 @@ def validar(nota: Nota, empresa: Empresa) -> list[str]:
                    f"{rotulo} deve estar entre 0 e 99,99 (em percentual).")
 
     # Identificacao
-    if util.texto(nota.serie):
-        exigir(re.fullmatch(r"\d{1,5}", util.texto(nota.serie)) is not None,
-               f"Serie deve ter de 1 a 5 digitos: {nota.serie!r}.")
+    serie = util.texto(nota.serie) or util.texto(empresa.serie_padrao)
+    if serie:
+        exigir(re.fullmatch(r"\d{1,5}", serie) is not None,
+               f"Serie deve ter de 1 a 5 digitos: {serie!r}.")
+        if layout == tabelas.LAYOUT_NT009 and serie.isdigit():
+            exigir(int(serie) <= 89999,
+                   f"Serie {serie} reservada: no layout da NT 009 a serie vai ate 89999.")
     if nota.numero is not None:
         exigir(len(str(int(nota.numero))) <= 15, "Numero da DPS pode ter no maximo 15 digitos.")
     if nota.data_emissao and nota.data_emissao > util.agora() + timedelta(minutes=5):
@@ -308,7 +317,7 @@ def validar(nota: Nota, empresa: Empresa) -> list[str]:
 def montar_id(empresa: Empresa, serie: str, numero: int) -> str:
     """Id = 'DPS' + municipio(7) + tipo inscricao(1) + inscricao(14) + serie(5) + numero(15)."""
     municipio = util.so_digitos(empresa.codigo_municipio).zfill(7)[:7]
-    inscricao = util.so_digitos(empresa.cnpj)
+    inscricao = util.so_alfanumerico(empresa.cnpj)
     tipo_inscricao = "2" if len(inscricao) == 14 else "1"
     return (f"DPS{municipio}{tipo_inscricao}{inscricao.zfill(14)[:14]}"
             f"{util.so_digitos(serie).zfill(5)[:5]}{str(int(numero)).zfill(15)[:15]}")
@@ -338,7 +347,9 @@ def _documento_do_tomador(pai, nota: Nota) -> None:
     if tipo == "NIF":
         _elemento(pai, "NIF", util.texto_fiscal(nota.tomador_documento, 40))
     else:
-        _elemento(pai, tipo, util.so_digitos(nota.tomador_documento))
+        limpo = (util.so_alfanumerico(nota.tomador_documento) if tipo == "CNPJ"
+                 else util.so_digitos(nota.tomador_documento))
+        _elemento(pai, tipo, limpo)
 
 
 def _endereco_do_tomador(pai, nota: Nota) -> None:
@@ -369,7 +380,7 @@ def _endereco_do_tomador(pai, nota: Nota) -> None:
 
 def _bloco_prestador(pai, empresa: Empresa) -> None:
     prestador = _elemento(pai, "prest")
-    inscricao = util.so_digitos(empresa.cnpj)
+    inscricao = util.so_alfanumerico(empresa.cnpj)
     _elemento(prestador, "CNPJ" if len(inscricao) == 14 else "CPF", inscricao)
     _opcional(prestador, "IM", util.so_digitos(empresa.inscricao_municipal))
     _opcional(prestador, "fone", util.so_digitos(empresa.telefone))
@@ -396,7 +407,7 @@ def _bloco_tomador(pai, nota: Nota) -> None:
     _opcional(tomador, "email", util.texto_fiscal(nota.tomador_email, 80))
 
 
-def _bloco_servico(pai, nota: Nota, empresa: Empresa) -> None:
+def _bloco_servico(pai, nota: Nota, empresa: Empresa, layout: str) -> None:
     servico = _elemento(pai, "serv")
 
     local = _elemento(servico, "locPrest")
@@ -410,11 +421,18 @@ def _bloco_servico(pai, nota: Nota, empresa: Empresa) -> None:
     codigo = _elemento(servico, "cServ")
     _elemento(codigo, "cTribNac", util.so_digitos(nota.codigo_tributacao_nacional).zfill(6))
     _opcional(codigo, "cTribMun", util.so_digitos(nota.codigo_tributacao_municipal))
-    _elemento(codigo, "xDescServ",
-              util.texto_fiscal(nota.descricao_servico, 2000, quebras=True))
-    _opcional(codigo, "cNBS", util.so_digitos(nota.codigo_nbs))
+    descricao = util.texto_fiscal(nota.descricao_servico, 2000, quebras=True)
     # O schema so aceita letras e numeros aqui: "PED-77" vira "PED77".
-    _opcional(codigo, "cIntContrib", re.sub(r"[^A-Za-z0-9]", "", util.texto(nota.numero_interno))[:20])
+    interno = re.sub(r"[^A-Za-z0-9]", "", util.texto(nota.numero_interno))[:20]
+    if layout == tabelas.LAYOUT_NT009:
+        # NT 009: a descricao passou para o FIM do cServ.
+        _opcional(codigo, "cNBS", util.so_digitos(nota.codigo_nbs))
+        _opcional(codigo, "cIntContrib", interno)
+        _elemento(codigo, "xDescServ", descricao)
+    else:
+        _elemento(codigo, "xDescServ", descricao)
+        _opcional(codigo, "cNBS", util.so_digitos(nota.codigo_nbs))
+        _opcional(codigo, "cIntContrib", interno)
 
     informacoes = util.texto_fiscal(nota.informacoes_complementares, 2000)
     if informacoes:
@@ -478,7 +496,7 @@ def _bloco_total_tributos(pai, nota: Nota) -> None:
         _elemento(total, "indTotTrib", "0")
 
 
-def _bloco_valores(pai, nota: Nota) -> None:
+def _bloco_valores(pai, nota: Nota, layout: str) -> None:
     valores = _elemento(pai, "valores")
 
     prestacao = _elemento(valores, "vServPrest")
@@ -495,8 +513,13 @@ def _bloco_valores(pai, nota: Nota) -> None:
 
     deducoes = util.decimal(nota.valor_deducoes)
     if deducoes is not None and deducoes > 0:
-        bloco = _elemento(valores, "vDedRed")
-        _elemento(bloco, "vDR", util.moeda(deducoes))
+        if layout == tabelas.LAYOUT_NT009:
+            # NT 009: deducoes/reducoes viraram "ajuste da base de calculo".
+            bloco = _elemento(valores, "vAjusteBC")
+            _elemento(bloco, "vAjusteBCISSQN", util.moeda(deducoes))
+        else:
+            bloco = _elemento(valores, "vDedRed")
+            _elemento(bloco, "vDR", util.moeda(deducoes))
 
     tributos = _elemento(valores, "trib")
     _bloco_issqn(tributos, nota)
@@ -504,10 +527,18 @@ def _bloco_valores(pai, nota: Nota) -> None:
     _bloco_total_tributos(tributos, nota)
 
 
-def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True) -> tuple[bytes, str]:
-    """Monta o XML da DPS (ainda sem assinatura). Devolve (xml, id_dps)."""
+def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True,
+               layout: str | None = None) -> tuple[bytes, str]:
+    """Monta o XML da DPS (ainda sem assinatura). Devolve (xml, id_dps).
+
+    ``layout``: "anterior" ou "nt009". Sem informar, usa o da empresa
+    (automatico: pelo ambiente e pela data - ver tabelas.layout_para).
+    """
+    layout = layout or empresa.layout_efetivo()
+    if layout not in (tabelas.LAYOUT_ANTERIOR, tabelas.LAYOUT_NT009):
+        raise ValueError(f"Layout invalido: {layout!r}")
     if validar_antes:
-        problemas = validar(nota, empresa)
+        problemas = validar(nota, empresa, layout)
         if problemas:
             raise ErroDeValidacao(
                 f"Nota da {nota.identificacao()} com problemas:\n  - "
@@ -529,12 +560,15 @@ def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True) -> t
     _elemento(info, "nDPS", str(numero))
     _elemento(info, "dCompet", util.data_xml(competencia))
     _elemento(info, "tpEmit", util.texto(empresa.tipo_emitente) or "1")
+    if layout == tabelas.LAYOUT_NT009:
+        # NT 009: finalidade da emissao, obrigatoria. 0 = NFS-e regular.
+        _elemento(info, "finNFSe", "0")
     _elemento(info, "cLocEmi", util.so_digitos(empresa.codigo_municipio).zfill(7))
 
     _bloco_prestador(info, empresa)
     _bloco_tomador(info, nota)
-    _bloco_servico(info, nota, empresa)
-    _bloco_valores(info, nota)
+    _bloco_servico(info, nota, empresa, layout)
+    _bloco_valores(info, nota, layout)
 
     return etree.tostring(raiz, encoding="UTF-8", xml_declaration=True), id_dps
 
@@ -545,10 +579,10 @@ def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True) -> t
 def montar_evento_cancelamento(empresa: Empresa, chave_acesso: str,
                                codigo_motivo: str, motivo: str) -> tuple[bytes, str]:
     """Monta o XML do pedido de registro do evento de cancelamento."""
-    chave = util.so_digitos(chave_acesso)
+    chave = util.so_alfanumerico(chave_acesso)   # com CNPJ alfanumerico a chave tem letras
     if len(chave) != 50:
         raise ErroDeValidacao(
-            f"Chave de acesso da NFS-e deve ter 50 digitos (recebida: {len(chave)}).")
+            f"Chave de acesso da NFS-e deve ter 50 caracteres (recebida: {len(chave)}).")
     codigo = tabelas.validar(tabelas.MOTIVO_CANCELAMENTO, codigo_motivo, "Motivo do cancelamento")
     descricao = util.texto_fiscal(motivo, 255)
     if len(descricao) < tabelas.MOTIVO_MINIMO:
@@ -565,7 +599,7 @@ def montar_evento_cancelamento(empresa: Empresa, chave_acesso: str,
     _elemento(info, "tpAmb", empresa.codigo_ambiente())
     _elemento(info, "verAplic", VERSAO_APLICATIVO)
     _elemento(info, "dhEvento", util.datahora_xml(util.agora()))
-    inscricao = util.so_digitos(empresa.cnpj)
+    inscricao = util.so_alfanumerico(empresa.cnpj)
     _elemento(info, "CNPJAutor" if len(inscricao) == 14 else "CPFAutor", inscricao)
     _elemento(info, "chNFSe", chave)
 

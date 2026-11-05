@@ -22,6 +22,15 @@ class ErroDeEsquema(Exception):
     """O XML nao bate com o schema oficial."""
 
 
+def pasta_do_layout(layout: str | None) -> Path:
+    """schemas/<layout>/ ; sem subpasta para o layout, usa schemas/ direto."""
+    if layout:
+        subpasta = PASTA_PADRAO / layout
+        if subpasta.is_dir():
+            return subpasta
+    return PASTA_PADRAO
+
+
 def localizar(nome_base: str, pasta: str | Path | None = None) -> Path | None:
     """Procura um XSD cujo nome comece por ``nome_base`` (ex.: 'DPS')."""
     diretorio = Path(pasta or PASTA_PADRAO)
@@ -52,9 +61,12 @@ def carregar(nome_base: str, pasta: str | Path | None = None) -> etree.XMLSchema
 
 
 def validar(xml: bytes, nome_base: str = "DPS",
-            pasta: str | Path | None = None) -> list[str]:
-    """Devolve a lista de erros do schema. Lista vazia = ok (ou sem XSD)."""
-    esquema = carregar(nome_base, pasta)
+            pasta: str | Path | None = None, layout: str | None = None) -> list[str]:
+    """Devolve a lista de erros do schema. Lista vazia = ok (ou sem XSD).
+
+    ``layout`` escolhe a subpasta (schemas/anterior, schemas/nt009).
+    """
+    esquema = carregar(nome_base, pasta or pasta_do_layout(layout))
     if esquema is None:
         return []
     documento = etree.fromstring(xml, parser=etree.XMLParser(

@@ -248,14 +248,36 @@ def _digitos_verificadores(base: str, pesos: list[int]) -> int:
     return 0 if resto < 2 else 11 - resto
 
 
+def so_alfanumerico(valor) -> str:
+    """Mantem so letras e numeros, em maiusculas (CNPJ alfanumerico, chave de acesso)."""
+    return re.sub(r"[^0-9A-Z]", "", texto(valor).upper())
+
+
+def cnpj_alfanumerico(valor) -> bool:
+    """CNPJ no formato novo da Receita (letras nas 12 primeiras posicoes)."""
+    return any(c.isalpha() for c in so_alfanumerico(valor))
+
+
 def cnpj_valido(valor) -> bool:
-    c = so_digitos(valor)
-    if len(c) != 14 or c == c[0] * 14:
+    """Valida CNPJ numerico e alfanumerico (IN RFB 2.229/2024).
+
+    No CNPJ alfanumerico cada caractere vale (codigo ASCII - 48): '0'..'9' valem
+    0..9 e 'A'..'Z' valem 17..42. Os pesos e o modulo 11 sao os de sempre, e os
+    dois digitos verificadores continuam numericos.
+    """
+    c = so_alfanumerico(valor)
+    if (len(c) != 14 or not c[12:].isdigit() or c == c[0] * 14
+            or not re.fullmatch(r"[0-9A-Z]{12}", c[:12])):
         return False
+    valores = [ord(x) - 48 for x in c]
     p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
     p2 = [6] + p1
-    return (_digitos_verificadores(c[:12], p1) == int(c[12])
-            and _digitos_verificadores(c[:13], p2) == int(c[13]))
+
+    def dv(base, pesos):
+        resto = sum(v * p for v, p in zip(base, pesos)) % 11
+        return 0 if resto < 2 else 11 - resto
+
+    return dv(valores[:12], p1) == valores[12] and dv(valores[:13], p2) == valores[13]
 
 
 def cpf_valido(valor) -> bool:
@@ -267,7 +289,7 @@ def cpf_valido(valor) -> bool:
 
 
 def formatar_cnpj(valor) -> str:
-    c = so_digitos(valor)
+    c = so_alfanumerico(valor)
     if len(c) != 14:
         return texto(valor)
     return f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}"
@@ -281,20 +303,20 @@ def formatar_cpf(valor) -> str:
 
 
 def formatar_documento(valor) -> str:
-    c = so_digitos(valor)
+    c = so_alfanumerico(valor)
     if len(c) == 14:
         return formatar_cnpj(c)
-    if len(c) == 11:
+    if len(c) == 11 and c.isdigit():
         return formatar_cpf(c)
     return texto(valor)
 
 
 def tipo_documento(valor) -> str:
-    """Retorna 'CNPJ', 'CPF' ou '' conforme a quantidade de digitos."""
-    c = so_digitos(valor)
+    """Retorna 'CNPJ', 'CPF' ou '' conforme a quantidade de caracteres."""
+    c = so_alfanumerico(valor)
     if len(c) == 14:
         return "CNPJ"
-    if len(c) == 11:
+    if len(c) == 11 and c.isdigit():
         return "CPF"
     return ""
 

@@ -62,6 +62,8 @@ def cmd_empresas_listar(args) -> int:
         escrever(f"     Municipio    : {empresa.codigo_municipio or '-'}"
                  f"   Insc. municipal: {empresa.inscricao_municipal or '-'}")
         escrever(f"     Ambiente     : {tabelas.ambiente(empresa.ambiente)['rotulo']}")
+        escrever(f"     Layout DPS   : {tabelas.LAYOUTS[empresa.layout_efetivo()]}"
+                 f" ({tabelas.LAYOUTS.get(empresa.layout, empresa.layout).split(' (')[0]})")
         escrever(f"     Serie/proximo: {empresa.serie_padrao} / {empresa.proximo_numero}")
         certificado = (f"{empresa.certificado_titular} (vence em {empresa.certificado_validade})"
                        if empresa.tem_certificado() else "nao cadastrado")
@@ -77,13 +79,14 @@ def cmd_empresas_adicionar(args) -> int:
     empresa = Empresa(
         nome=util.texto(args.nome)[:31],
         razao_social=util.texto(args.razao or args.nome),
-        cnpj=util.so_digitos(args.cnpj or ""),
+        cnpj=util.so_alfanumerico(args.cnpj or ""),
         inscricao_municipal=util.texto(args.im or ""),
         codigo_municipio=util.so_digitos(args.municipio or ""),
         optante_simples=args.simples,
         regime_apuracao_sn=args.regime_sn or "",
         regime_especial=args.regime_especial,
         ambiente=args.ambiente,
+        layout=args.layout,
         serie_padrao=util.texto(args.serie),
         proximo_numero=max(1, args.proximo),
         email=util.texto(args.email or ""),
@@ -110,11 +113,12 @@ def cmd_empresas_editar(args) -> int:
         return 1
 
     alteracoes = {
-        "razao_social": args.razao, "cnpj": util.so_digitos(args.cnpj) if args.cnpj else None,
+        "razao_social": args.razao, "cnpj": util.so_alfanumerico(args.cnpj) if args.cnpj else None,
         "inscricao_municipal": args.im,
         "codigo_municipio": util.so_digitos(args.municipio) if args.municipio else None,
         "optante_simples": args.simples, "regime_apuracao_sn": args.regime_sn,
         "regime_especial": args.regime_especial, "ambiente": args.ambiente,
+        "layout": args.layout,
         "serie_padrao": args.serie, "email": args.email, "telefone": args.telefone,
     }
     for campo, valor in alteracoes.items():
@@ -306,6 +310,8 @@ def construir_parser() -> argparse.ArgumentParser:
         p.add_argument("--regime-especial", choices=sorted(tabelas.REGIME_ESPECIAL),
                        help="regime especial de tributacao")
         p.add_argument("--ambiente", choices=("homologacao", "producao"))
+        p.add_argument("--layout", choices=sorted(tabelas.LAYOUTS),
+                       help="layout da DPS (padrao: automatico, pelo ambiente e pela data)")
         p.add_argument("--serie", help="serie padrao da DPS")
         p.add_argument("--email")
         p.add_argument("--telefone")
@@ -313,7 +319,8 @@ def construir_parser() -> argparse.ArgumentParser:
     adicionar = acoes.add_parser("adicionar", help="cadastra uma nova empresa")
     campos_comuns(adicionar)
     adicionar.set_defaults(func=cmd_empresas_adicionar, simples="1", regime_especial="0",
-                           ambiente=tabelas.AMBIENTE_PADRAO, serie="1", proximo=1)
+                           ambiente=tabelas.AMBIENTE_PADRAO, serie="1", proximo=1,
+                           layout=tabelas.LAYOUT_AUTOMATICO)
     adicionar.add_argument("--proximo", type=int, default=1,
                            help="proximo numero de DPS (padrao: 1)")
 

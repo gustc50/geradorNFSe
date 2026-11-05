@@ -224,6 +224,11 @@ class Emissor:
         for nome_aba, aba in leitura.items():
             lote.ignoradas.extend((nome_aba, linha, motivo) for linha, motivo in aba.ignoradas)
             lote.avisos.extend(f"[{nome_aba}] {e}" for e in aba.erros)
+            for linha in aba.exemplos_editados or []:
+                aviso = (f"[{nome_aba}] A linha {linha} foi preenchida com uma nota, mas continua "
+                         "marcada como EXEMPLO na coluna Status e NAO foi emitida. Apague a "
+                         "palavra EXEMPLO da coluna Status dessa linha e emita de novo.")
+                lote.avisos.append(aviso)
 
             empresa = self.config.obter(nome_aba)
             if empresa is None:

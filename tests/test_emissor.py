@@ -230,3 +230,41 @@ def test_planilha_bloqueada_nao_perde_as_chaves(config, planilha_modelo, tmp_pat
     csv_gerado = next(saida.glob("resultados-*.csv"))
     conteudo = csv_gerado.read_text(encoding="utf-8-sig")
     assert CHAVE in conteudo and "EMITIDA" in conteudo
+
+
+# --------------------------------------------------------------------------- #
+# Nota digitada por cima da linha de exemplo (linha 3)
+# --------------------------------------------------------------------------- #
+NOTA_REAL_NA_LINHA_3 = dict(NOTA_VALIDA, **{
+    "CNPJ/CPF do tomador": "40.036.420/0001-42",
+    "Nome/Razao social do tomador": "CLIENTE DE VERDADE LTDA",
+    "Descricao do servico": "Exame admissional",
+    "Valor do servico": 350,
+})
+
+
+def test_nota_na_linha_de_exemplo_nao_sai_mas_avisa_o_que_fazer(config, planilha_modelo,
+                                                                 tmp_path):
+    preencher(planilha_modelo, {3: NOTA_REAL_NA_LINHA_3})   # Status continua EXEMPLO
+    with patch("nfse.emissor.ClienteNFSe") as cliente:
+        lote = Emissor(config, diretorio_saida=tmp_path / "saida").emitir_planilha(planilha_modelo)
+    cliente.return_value.emitir.assert_not_called()
+    assert lote.resultados == []
+    assert any("linha 3" in a and "EXEMPLO" in a for a in lote.avisos)
+    motivo = lote.ignoradas[0][2]
+    assert "AZ3" in motivo and "apague" in motivo
+
+
+def test_apagando_a_marca_exemplo_a_linha_3_e_emitida(config, planilha_modelo, tmp_path):
+    preencher(planilha_modelo, {3: dict(NOTA_REAL_NA_LINHA_3, Status=None)})
+    with patch("nfse.emissor.ClienteNFSe") as cliente:
+        cliente.return_value.emitir.return_value = resposta_ok()
+        lote = Emissor(config, diretorio_saida=tmp_path / "saida").emitir_planilha(planilha_modelo)
+    assert [r.linha for r in lote.emitidas] == [3]
+
+
+def test_exemplo_intocado_nao_gera_aviso(config, planilha_modelo, tmp_path):
+    lote = Emissor(config, diretorio_saida=tmp_path / "saida",
+                   simular=True).emitir_planilha(planilha_modelo)
+    assert lote.avisos == []
+    assert "linha 4" in lote.ignoradas[0][2]

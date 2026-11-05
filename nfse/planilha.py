@@ -236,6 +236,7 @@ class AbaLida:
     notas: list[Nota]
     ignoradas: list[tuple[int, str]]  # (linha, motivo)
     erros: list[str]
+    exemplos_editados: list[int] = None   # linhas de exemplo com dados do usuario
 
 
 def aba_de_apoio(nome: str) -> bool:
@@ -280,12 +281,32 @@ def _converter(coluna: Coluna, valor):
     return util.texto(valor)
 
 
+def _exemplo_foi_editado(valores: dict) -> bool:
+    """Diz se a linha de exemplo recebeu dados de verdade (outro tomador, valor...)."""
+    exemplos = {c.campo: c.exemplo for c in COLUNAS}
+    for campo in ("tomador_documento", "tomador_nome", "descricao_servico", "valor_servico"):
+        atual, original = valores.get(campo), exemplos.get(campo, "")
+        if campo == "valor_servico":
+            try:
+                if util.decimal(atual) != util.decimal(original):
+                    return True
+            except util.ErroDeValidacao:
+                return True
+        elif campo == "tomador_documento":
+            if util.so_digitos(atual) != util.so_digitos(original):
+                return True
+        elif util.texto(atual) != util.texto(original):
+            return True
+    return False
+
+
 def ler_aba(planilha, somente_pendentes: bool = True) -> AbaLida:
     """Le uma aba e devolve as notas encontradas."""
     linha_cabecalho, mapa = _localizar_cabecalho(planilha)
     notas: list[Nota] = []
     ignoradas: list[tuple[int, str]] = []
     erros: list[str] = []
+    exemplos_editados: list[int] = []
 
     for linha in planilha.iter_rows(min_row=linha_cabecalho + 1, values_only=False):
         numero_linha = linha[0].row if linha else 0
@@ -304,7 +325,18 @@ def ler_aba(planilha, somente_pendentes: bool = True) -> AbaLida:
 
         # A linha de demonstracao da planilha modelo nunca e enviada.
         if status.startswith(MARCA_EXEMPLO):
-            ignoradas.append((numero_linha, "linha de exemplo da planilha modelo"))
+            letra = get_column_letter(mapa["status"])
+            if _exemplo_foi_editado(campos_nota):
+                exemplos_editados.append(numero_linha)
+                ignoradas.append((numero_linha, (
+                    f"esta linha tem uma nota sua, mas a coluna Status (coluna {letra}) "
+                    f"ainda esta marcada como EXEMPLO, e por seguranca linhas de exemplo "
+                    f"nunca sao emitidas. Para emitir: apague o texto da celula "
+                    f"{letra}{numero_linha} e rode de novo.")))
+            else:
+                ignoradas.append((numero_linha, (
+                    f"linha de exemplo da planilha modelo (marcada na coluna {letra}). "
+                    "Preencha suas notas a partir da linha 4.")))
             continue
         if somente_pendentes and (chave or status in STATUS_JA_PROCESSADO):
             ignoradas.append((numero_linha, f"ja emitida (chave {chave or status})"))
@@ -323,7 +355,8 @@ def ler_aba(planilha, somente_pendentes: bool = True) -> AbaLida:
         notas.append(nota)
 
     return AbaLida(nome=planilha.title, linha_cabecalho=linha_cabecalho, colunas=mapa,
-                   notas=notas, ignoradas=ignoradas, erros=erros)
+                   notas=notas, ignoradas=ignoradas, erros=erros,
+                   exemplos_editados=exemplos_editados)
 
 
 def ler(caminho: str | Path, abas: list[str] | None = None,

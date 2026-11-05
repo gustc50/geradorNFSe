@@ -86,8 +86,12 @@ Na aba da empresa:
 |---|---|
 | 1 | Faixa colorida com o nome do grupo de colunas |
 | 2 | Títulos — **amarelo = obrigatório**. Passe o mouse para ver a ajuda |
-| 3 | Exemplo preenchido. **Nunca é emitido** (a coluna Status vem marcada como `EXEMPLO`) |
+| 3 | Exemplo preenchido, em cinza. **Nunca é emitido** (a coluna Status, coluna AZ, vem marcada como `EXEMPLO`) |
 | 4+ | Suas notas, uma por linha |
+
+> Preencheu a nota na linha 3? Ela não sai enquanto a coluna **Status (AZ)** disser
+> `EXEMPLO`. Apague essa palavra da célula `AZ3` (ou passe a nota para a linha 4).
+> O sistema avisa quando detecta essa situação.
 
 ### 4. Preencha as notas
 
@@ -226,7 +230,7 @@ geradorNFSe/
 .venv/bin/python -m pytest
 ```
 
-São 165 testes cobrindo conversão de dados, cofre de senhas, leitura do
+São 168 testes cobrindo conversão de dados, cofre de senhas, leitura do
 certificado, assinatura digital (inclusive detecção de adulteração), montagem
 do XML em 30+ cenários validados contra o **schema oficial**, leitura/gravação da
 planilha, cliente da API, emissão em lote e um roteiro completo da interface

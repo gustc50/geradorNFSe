@@ -9,7 +9,7 @@ Estrutura do arquivo gerado:
 Na aba da empresa:
   linha 1  faixa com o nome do grupo de colunas
   linha 2  titulos das colunas (com comentario de ajuda)
-  linha 3  exemplo preenchido - apague ou sobrescreva
+  linha 3  exemplo preenchido - nunca e emitido (Status = EXEMPLO)
   linha 4+ suas notas
 """
 
@@ -119,7 +119,8 @@ LINHAS_LEIAME = [
     ("texto", "Para incluir outra empresa, use o menu Planilha > Adicionar aba de empresa."),
     ("", ""),
     ("passo", "2. Uma linha por nota fiscal"),
-    ("texto", "Preencha a partir da linha 4. A linha 3 e um exemplo: sobrescreva ou apague."),
+    ("texto", "Preencha suas notas a partir da linha 4. A linha 3 (cinza) e so um exemplo e NUNCA e emitida."),
+    ("texto", "Quer usar a linha 3 para uma nota de verdade? Apague a palavra EXEMPLO da coluna Status (coluna AZ)."),
     ("texto", "Linhas totalmente vazias sao ignoradas."),
     ("", ""),
     ("passo", "3. Colunas obrigatorias"),
@@ -271,6 +272,9 @@ def montar_aba_empresa(livro: Workbook, nome: str,
             else:
                 celula.value = valor
             celula.font = Font(italic=True, color="7F7F7F")
+        for indice in range(1, len(colunas) + 1):   # faixa cinza: e so exemplo
+            aba.cell(row=LINHA_EXEMPLO, column=indice).fill = PatternFill(
+                "solid", fgColor="E7E6E6")
         aba.cell(row=LINHA_EXEMPLO, column=1).comment = Comment(
             "Linha de exemplo. O sistema NAO emite esta linha porque a coluna "
             "Status esta marcada como EXEMPLO. Apague a linha ou limpe a coluna "

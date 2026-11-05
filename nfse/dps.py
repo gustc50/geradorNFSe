@@ -94,6 +94,7 @@ class Nota:
     tributos_federais: Decimal | None = None
     tributos_estaduais: Decimal | None = None
     tributos_municipais: Decimal | None = None
+    percentual_simples: Decimal | None = None   # pTotTribSN (so ME/EPP do Simples)
 
     # --- controle --------------------------------------------------------
     linha: int = 0
@@ -279,6 +280,23 @@ def validar(nota: Nota, empresa: Empresa, layout: str | None = None) -> list[str
     if util.texto(nota.tributacao_issqn) == "2":
         exigir(bool(util.texto(nota.codigo_pais_resultado)),
                "Codigo do pais de resultado e obrigatorio na exportacao de servico.")
+
+    # Tributos aproximados: regra do Portal para ME/EPP do Simples (E0712).
+    if util.texto(empresa.optante_simples) == "3":
+        try:
+            percentual = percentual_simples_da_nota(nota, empresa)
+        except util.ErroDeValidacao:
+            percentual = Decimal("-1")
+        informou_valores = any(util.decimal(v) is not None for v in (
+            nota.tributos_federais, nota.tributos_estaduais, nota.tributos_municipais))
+        if percentual is None and not informou_valores:
+            erros.append(
+                "Empresa optante pelo Simples (ME/EPP): o Portal exige o percentual "
+                "aproximado dos tributos do Simples Nacional (a aliquota efetiva do mes). "
+                "Informe no campo '% tributos do Simples' do cadastro da empresa ou na "
+                "coluna '% tributos Simples Nacional' da planilha.")
+        elif percentual is not None and not Decimal("0") <= percentual < Decimal("100"):
+            erros.append("% tributos do Simples deve estar entre 0 e 99,99 (ex.: 6 para 6%).")
 
     if util.texto(nota.retencao_pis_cofins) and not util.texto(nota.cst_pis_cofins):
         erros.append("Informe o CST de PIS/COFINS junto com a retencao de PIS/COFINS.")
@@ -512,10 +530,27 @@ def _bloco_tributos_federais(pai, nota: Nota) -> None:
             _elemento(federal, nome, util.moeda(valor))
 
 
-def _bloco_total_tributos(pai, nota: Nota) -> None:
+def percentual_simples_da_nota(nota: Nota, empresa: Empresa) -> Decimal | None:
+    """% aproximado dos tributos do Simples: o da linha ou, se vazio, o da empresa."""
+    if util.decimal(nota.percentual_simples) is not None:
+        return util.decimal(nota.percentual_simples)
+    return util.decimal(empresa.percentual_simples)
+
+
+def _bloco_total_tributos(pai, nota: Nota, empresa: Empresa) -> None:
+    """Tributos aproximados (Lei 12.741/2012), conforme o regime do prestador.
+
+    Regras do Portal: ME/EPP do Simples NAO pode usar o indicador "nao informar"
+    (E0712) e deve mandar o percentual do Simples (pTotTribSN); MEI, ao
+    contrario, NAO pode mandar pTotTribSN (E0710).
+    """
     total = _elemento(pai, "totTrib")
     valores = [nota.tributos_federais, nota.tributos_estaduais, nota.tributos_municipais]
-    if any(util.decimal(v) is not None for v in valores):
+    regime = util.texto(empresa.optante_simples)
+    percentual = percentual_simples_da_nota(nota, empresa)
+    if regime == "3" and percentual is not None:
+        _elemento(total, "pTotTribSN", util.percentual(percentual))
+    elif any(util.decimal(v) is not None for v in valores):
         detalhe = _elemento(total, "vTotTrib")
         _elemento(detalhe, "vTotTribFed", util.moeda(nota.tributos_federais))
         _elemento(detalhe, "vTotTribEst", util.moeda(nota.tributos_estaduais))
@@ -525,7 +560,7 @@ def _bloco_total_tributos(pai, nota: Nota) -> None:
         _elemento(total, "indTotTrib", "0")
 
 
-def _bloco_valores(pai, nota: Nota, layout: str) -> None:
+def _bloco_valores(pai, nota: Nota, layout: str, empresa: Empresa) -> None:
     valores = _elemento(pai, "valores")
 
     prestacao = _elemento(valores, "vServPrest")
@@ -553,7 +588,7 @@ def _bloco_valores(pai, nota: Nota, layout: str) -> None:
     tributos = _elemento(valores, "trib")
     _bloco_issqn(tributos, nota)
     _bloco_tributos_federais(tributos, nota)
-    _bloco_total_tributos(tributos, nota)
+    _bloco_total_tributos(tributos, nota, empresa)
 
 
 def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True,
@@ -598,7 +633,7 @@ def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True,
     _bloco_prestador(info, empresa)
     _bloco_tomador(info, nota)
     _bloco_servico(info, nota, empresa, layout)
-    _bloco_valores(info, nota, layout)
+    _bloco_valores(info, nota, layout, empresa)
 
     return etree.tostring(raiz, encoding="UTF-8", xml_declaration=True), id_dps
 

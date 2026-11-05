@@ -65,6 +65,8 @@ def cmd_empresas_listar(args) -> int:
         escrever(f"     Layout DPS   : {tabelas.LAYOUTS[empresa.layout_efetivo()]}"
                  f" ({tabelas.LAYOUTS.get(empresa.layout, empresa.layout).split(' (')[0]})")
         escrever(f"     Serie/proximo: {empresa.serie_padrao} / {empresa.proximo_numero}")
+        if util.texto(empresa.optante_simples) == "3":
+            escrever(f"     % trib. SN   : {empresa.percentual_simples or 'NAO INFORMADO'}")
         certificado = (f"{empresa.certificado_titular} (vence em {empresa.certificado_validade})"
                        if empresa.tem_certificado() else "nao cadastrado")
         escrever(f"     Certificado  : {certificado}")
@@ -84,6 +86,7 @@ def cmd_empresas_adicionar(args) -> int:
         codigo_municipio=util.so_digitos(args.municipio or ""),
         optante_simples=args.simples,
         regime_apuracao_sn=args.regime_sn or "",
+        percentual_simples=util.texto(args.percentual_simples or ""),
         regime_especial=args.regime_especial,
         ambiente=args.ambiente,
         layout=args.layout,
@@ -117,6 +120,7 @@ def cmd_empresas_editar(args) -> int:
         "inscricao_municipal": args.im,
         "codigo_municipio": util.so_digitos(args.municipio) if args.municipio else None,
         "optante_simples": args.simples, "regime_apuracao_sn": args.regime_sn,
+        "percentual_simples": args.percentual_simples,
         "regime_especial": args.regime_especial, "ambiente": args.ambiente,
         "layout": args.layout,
         "serie_padrao": args.serie, "email": args.email, "telefone": args.telefone,
@@ -307,6 +311,8 @@ def construir_parser() -> argparse.ArgumentParser:
                        help="1 nao optante, 2 MEI, 3 ME/EPP")
         p.add_argument("--regime-sn", choices=sorted(tabelas.REGIME_APURACAO_SN),
                        help="regime de apuracao (so para optante 3)")
+        p.add_argument("--percentual-simples",
+                       help="ME/EPP do Simples: %% aproximado dos tributos do SN (ex.: 6)")
         p.add_argument("--regime-especial", choices=sorted(tabelas.REGIME_ESPECIAL),
                        help="regime especial de tributacao")
         p.add_argument("--ambiente", choices=("homologacao", "producao"))

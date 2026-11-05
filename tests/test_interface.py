@@ -81,6 +81,9 @@ def test_roteiro_completo_da_interface(tmp_path):
         aba.var_municipio.set("3550308"); aba.var_email.set("fiscal@ngf.com.br")
         aba.var_fone.set("(11) 3333-4444")
         aba.combo_simples.definir("3"); aba._alternar_regime_sn()
+        resultados.append(ok(str(aba.entrada_percentual_sn.cget("state")) == "normal",
+                             "ME/EPP habilita o campo '% tributos do Simples'"))
+        aba.var_percentual_sn.set("6")
         resultados.append(ok(str(aba.combo_regime_sn.cget("state")) == "readonly" and aba.combo_regime_sn.codigo() == "1",
                              "Simples ME/EPP habilita e preenche o regime de apuracao"))
         aba.salvar()

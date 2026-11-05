@@ -61,6 +61,10 @@ na planilha. Preencha:
   (São Paulo = `3550308`, Rio de Janeiro = `3304557`). Consulte em
   [ibge.gov.br/cidades](https://www.ibge.gov.br/cidades-e-estados)
 - **Simples Nacional**, **regime especial** e **série padrão**
+- **% tributos do Simples** (só ME/EPP): a alíquota efetiva aproximada do mês. O
+  Portal exige esse percentual nas notas de ME/EPP (sem ele recusa com `E0712`).
+  Atualize quando a alíquota efetiva mudar; a coluna "% tributos Simples Nacional"
+  da planilha permite um valor diferente por nota. Para MEI e não optantes, deixe vazio.
 - **Ambiente**: comece sempre em **Homologação**
 
 ### 2. Cadastre o certificado digital
@@ -86,12 +90,12 @@ Na aba da empresa:
 |---|---|
 | 1 | Faixa colorida com o nome do grupo de colunas |
 | 2 | Títulos — **amarelo = obrigatório**. Passe o mouse para ver a ajuda |
-| 3 | Exemplo preenchido, em cinza. **Nunca é emitido** (a coluna Status, coluna AZ, vem marcada como `EXEMPLO`) |
+| 3 | Exemplo preenchido, em cinza. **Nunca é emitido** (a coluna Status, no fim da planilha, vem marcada como `EXEMPLO`) |
 | 4+ | Suas notas, uma por linha |
 
-> Preencheu a nota na linha 3? Ela não sai enquanto a coluna **Status (AZ)** disser
-> `EXEMPLO`. Apague essa palavra da célula `AZ3` (ou passe a nota para a linha 4).
-> O sistema avisa quando detecta essa situação.
+> Preencheu a nota na linha 3? Ela não sai enquanto a coluna **Status** disser
+> `EXEMPLO`. Apague essa palavra da célula da linha 3 nessa coluna (ou passe a nota
+> para a linha 4). O sistema avisa qual célula limpar quando detecta essa situação.
 
 ### 4. Preencha as notas
 
@@ -252,7 +256,7 @@ Os XSD de cada layout ficam em `schemas/anterior/` e `schemas/nt009/`.
 .venv/bin/python -m pytest
 ```
 
-São 232 testes cobrindo conversão de dados, cofre de senhas, leitura do
+São 244 testes cobrindo conversão de dados, cofre de senhas, leitura do
 certificado, assinatura digital (inclusive detecção de adulteração), montagem
 do XML em 30+ cenários validados contra o **schema oficial dos dois layouts**, leitura/gravação da
 planilha, cliente da API, emissão em lote e um roteiro completo da interface

@@ -164,6 +164,14 @@ class AbaEmpresa(ttk.Frame):
         self.combo_regime = CampoCombo(grupo, tabelas.REGIME_ESPECIAL)
         self.combo_regime.grid(row=2, column=5, sticky="ew", pady=3)
 
+        rotulo("% tributos do Simples", 4, 0)
+        self.var_percentual_sn = tk.StringVar()
+        self.entrada_percentual_sn = ttk.Entry(grupo, textvariable=self.var_percentual_sn)
+        self.entrada_percentual_sn.grid(row=4, column=1, sticky="ew", pady=3)
+        ttk.Label(grupo, foreground="#666666",
+                  text="So ME/EPP: aliquota efetiva aproximada do mes (ex.: 6 = 6%). "
+                       "O Portal exige.").grid(row=4, column=2, columnspan=4, sticky="w")
+
         rotulo("E-mail", 3, 0)
         ttk.Entry(grupo, textvariable=self.var_email).grid(row=3, column=1, sticky="ew", pady=3)
         rotulo("Telefone", 3, 2)
@@ -173,7 +181,7 @@ class AbaEmpresa(ttk.Frame):
             row=3, column=5, sticky="ew", pady=3)
 
         ambiente = ttk.Frame(grupo)
-        ambiente.grid(row=4, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        ambiente.grid(row=5, column=0, columnspan=6, sticky="w", pady=(8, 0))
         ttk.Label(ambiente, text="Ambiente:").pack(side="left", padx=(0, 8))
         ttk.Radiobutton(ambiente, text="Homologacao (teste)", value="homologacao",
                         variable=self.var_ambiente,
@@ -187,7 +195,7 @@ class AbaEmpresa(ttk.Frame):
         self.rotulo_layout.pack(side="left", padx=4)
 
         ttk.Button(grupo, text="Salvar dados da empresa",
-                   command=self.salvar).grid(row=5, column=0, columnspan=2,
+                   command=self.salvar).grid(row=6, column=0, columnspan=2,
                                              sticky="w", pady=(10, 0))
 
     def _montar_certificado(self, pai) -> None:
@@ -331,6 +339,7 @@ class AbaEmpresa(ttk.Frame):
         self.var_ambiente.set(tabelas.ambiente(e.ambiente)["chave"])
         self.combo_simples.definir(e.optante_simples)
         self.combo_regime_sn.definir(e.regime_apuracao_sn or "1")
+        self.var_percentual_sn.set(e.percentual_simples)
         self.combo_regime.definir(e.regime_especial)
         self.var_certificado.set(e.certificado_arquivo)
         self.var_senha.set(SENHA_GUARDADA if e.certificado_senha else "")
@@ -357,6 +366,8 @@ class AbaEmpresa(ttk.Frame):
         e.regime_apuracao_sn = (self.combo_regime_sn.codigo()
                                 if e.optante_simples == "3" else "")
         e.regime_especial = self.combo_regime.codigo()
+        e.percentual_simples = (util.texto(self.var_percentual_sn.get())
+                                if e.optante_simples == "3" else "")
 
     def salvar(self, silencioso: bool = False) -> bool:
         if self.app.ocupado:
@@ -385,6 +396,7 @@ class AbaEmpresa(ttk.Frame):
     def _alternar_regime_sn(self) -> None:
         """O regime de apuracao so existe para optante ME/EPP (codigo 3)."""
         aplicavel = self.combo_simples.codigo() == "3"
+        self.entrada_percentual_sn.configure(state="normal" if aplicavel else "disabled")
         if aplicavel:
             self.combo_regime_sn.configure(state="readonly")
             if not self.combo_regime_sn.codigo():

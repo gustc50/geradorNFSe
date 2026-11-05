@@ -191,6 +191,10 @@ COLUNAS: tuple[Coluna, ...] = (
            "Lei 12.741/2012. Deixe as tres colunas vazias para nao informar."),
     Coluna("tributos_estaduais", "Tributos estaduais aprox.", G_TOT, False, 22),
     Coluna("tributos_municipais", "Tributos municipais aprox.", G_TOT, False, 22),
+    Coluna("percentual_simples", "% tributos Simples Nacional", G_TOT, False, 24, "",
+           "So para empresa ME/EPP do Simples: aliquota efetiva aproximada do mes "
+           "(ex.: 6 para 6%). Vazio usa o '% tributos do Simples' do cadastro da empresa.",
+           apelidos=("ptottribsn", "aliquota_simples", "percentual_simples")),
 )
 
 # Colunas preenchidas pelo sistema depois da emissao.
@@ -207,7 +211,7 @@ CAMPOS_DECIMAIS = {
     "valor_servico", "desconto_incondicionado", "desconto_condicionado", "valor_deducoes",
     "aliquota_iss", "valor_iss_retido", "base_pis_cofins", "aliquota_pis", "aliquota_cofins",
     "valor_pis", "valor_cofins", "valor_inss", "valor_irrf", "valor_csll",
-    "tributos_federais", "tributos_estaduais", "tributos_municipais",
+    "tributos_federais", "tributos_estaduais", "tributos_municipais", "percentual_simples",
 }
 CAMPOS_DOMINIO = {c.campo for c in COLUNAS if c.dominio}
 

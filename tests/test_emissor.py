@@ -251,8 +251,11 @@ def test_nota_na_linha_de_exemplo_nao_sai_mas_avisa_o_que_fazer(config, planilha
     cliente.return_value.emitir.assert_not_called()
     assert lote.resultados == []
     assert any("linha 3" in a and "EXEMPLO" in a for a in lote.avisos)
+    from openpyxl.utils import get_column_letter
+    from nfse.planilha import COLUNAS, COLUNAS_RESULTADO
+    letra = get_column_letter([c.campo for c in COLUNAS + COLUNAS_RESULTADO].index("status") + 1)
     motivo = lote.ignoradas[0][2]
-    assert "AZ3" in motivo and "apague" in motivo
+    assert f"{letra}3" in motivo and "apague" in motivo
 
 
 def test_apagando_a_marca_exemplo_a_linha_3_e_emitida(config, planilha_modelo, tmp_path):

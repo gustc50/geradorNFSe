@@ -128,6 +128,7 @@ def test_total_de_tributos_detalhado(empresa, nota):
 def test_simples_nacional_inclui_regime_de_apuracao(empresa, nota):
     empresa.optante_simples = "3"
     empresa.regime_apuracao_sn = "1"
+    empresa.percentual_simples = "6"
     xml, _ = dps.montar_xml(nota, empresa)
     assert valor(xml, "n:infDPS/n:prest/n:regTrib/n:opSimpNac") == "3"
     assert valor(xml, "n:infDPS/n:prest/n:regTrib/n:regApTribSN") == "1"

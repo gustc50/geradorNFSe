@@ -12,6 +12,7 @@ import os
 import shutil
 import stat
 from dataclasses import dataclass, field, asdict
+from decimal import Decimal
 from pathlib import Path
 
 from . import tabelas, util
@@ -37,6 +38,7 @@ class Empresa:
     codigo_municipio: str = ""          # codigo IBGE de 7 digitos do emitente
     optante_simples: str = "1"          # 1 nao optante, 2 MEI, 3 ME/EPP
     regime_apuracao_sn: str = ""        # obrigatorio quando optante_simples = 3
+    percentual_simples: str = ""        # % aproximado dos tributos do SN (ME/EPP)
     regime_especial: str = "0"
     tipo_emitente: str = "1"            # 1 prestador, 2 tomador, 3 intermediario
     ambiente: str = tabelas.AMBIENTE_PADRAO
@@ -114,6 +116,14 @@ class Empresa:
             except ValueError as exc:
                 erros.append(str(exc))
 
+        if str(self.optante_simples).strip() == "3" and util.texto(self.percentual_simples):
+            try:
+                percentual = util.decimal(self.percentual_simples)
+                if not Decimal("0") <= percentual < Decimal("100"):
+                    raise util.ErroDeValidacao("fora da faixa")
+            except util.ErroDeValidacao:
+                erros.append("% tributos do Simples deve ser um percentual de 0 a 99,99 "
+                             f"(ex.: 6 para 6%): {self.percentual_simples!r}.")
         if str(self.optante_simples).strip() == "3":
             try:
                 tabelas.validar(tabelas.REGIME_APURACAO_SN, self.regime_apuracao_sn,

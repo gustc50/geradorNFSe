@@ -59,7 +59,7 @@ CAMPOS_MOEDA = {
     "valor_inss", "valor_irrf", "valor_csll",
     "tributos_federais", "tributos_estaduais", "tributos_municipais",
 }
-CAMPOS_PERCENTUAL = {"aliquota_iss", "aliquota_pis", "aliquota_cofins"}
+CAMPOS_PERCENTUAL = {"aliquota_iss", "aliquota_pis", "aliquota_cofins", "percentual_simples"}
 CAMPOS_TEXTO = {
     "tomador_documento", "tomador_cep", "tomador_codigo_municipio",
     "codigo_municipio_prestacao", "codigo_tributacao_nacional",
@@ -120,7 +120,8 @@ LINHAS_LEIAME = [
     ("", ""),
     ("passo", "2. Uma linha por nota fiscal"),
     ("texto", "Preencha suas notas a partir da linha 4. A linha 3 (cinza) e so um exemplo e NUNCA e emitida."),
-    ("texto", "Quer usar a linha 3 para uma nota de verdade? Apague a palavra EXEMPLO da coluna Status (coluna AZ)."),
+    ("texto", "Quer usar a linha 3 para uma nota de verdade? Apague a palavra EXEMPLO da coluna Status "
+              f"(coluna {get_column_letter([c.campo for c in COLUNAS + COLUNAS_RESULTADO].index('status') + 1)})."),
     ("texto", "Linhas totalmente vazias sao ignoradas."),
     ("", ""),
     ("passo", "3. Colunas obrigatorias"),

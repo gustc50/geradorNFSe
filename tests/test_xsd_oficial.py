@@ -97,7 +97,9 @@ CENARIOS_NOTA = {
 }
 
 CENARIOS_EMPRESA = {
-    "Simples ME/EPP": dict(optante_simples="3", regime_apuracao_sn="1"),
+    "Simples ME/EPP": dict(optante_simples="3", regime_apuracao_sn="1", percentual_simples="6"),
+    "Simples ME/EPP com percentual fracionado": dict(optante_simples="3", regime_apuracao_sn="1",
+                                                     percentual_simples="15,5"),
     "MEI": dict(optante_simples="2"),
     "regime especial outros": dict(regime_especial="9"),
     "prestador pessoa fisica": dict(cnpj="52998224725"),

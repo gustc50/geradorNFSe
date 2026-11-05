@@ -63,6 +63,7 @@ def test_tomador_no_exterior(empresa, nota):
     nota.tomador_documento = "US-99887766"
     nota.tomador_codigo_pais = "US"
     nota.tomador_cidade_exterior = "Miami"
+    nota.tomador_estado_exterior = "FL"
     nota.tomador_cep_exterior = "33101"
     nota.tomador_cep = nota.tomador_codigo_municipio = ""
     nota.tributacao_issqn = "2"
@@ -95,6 +96,7 @@ def test_tributos_federais(empresa, nota):
     assert valor(xml, f"{base}/n:piscofins/n:CST") == "01"
     assert valor(xml, f"{base}/n:piscofins/n:vPis") == "9.75"
     assert valor(xml, f"{base}/n:piscofins/n:tpRetPisCofins") == "1"
+    assert valor(xml, f"{base}/n:piscofins/n:pAliqPis") is None
     assert valor(xml, f"{base}/n:vRetIRRF") == "22.50"
     assert valor(xml, f"{base}/n:vRetCP") == "165.00"
 
@@ -190,8 +192,10 @@ def test_valor_liquido_desconta_retencoes(empresa, nota):
 # --------------------------------------------------------------------------- #
 def test_evento_de_cancelamento(empresa):
     chave = "3" * 50
-    xml, identificador = dps.montar_evento_cancelamento(empresa, chave, "1", "Erro de digitacao")
-    assert identificador == f"PRE{chave}101101001"
+    xml, identificador = dps.montar_evento_cancelamento(
+        empresa, chave, "1", "Valor digitado errado na nota")
+    assert identificador == f"PRE{chave}101101"
+    assert len(identificador) == 59
     raiz = etree.fromstring(xml)
     assert raiz.find("n:infPedReg/n:chNFSe", NS).text == chave
     assert raiz.find("n:infPedReg/n:CNPJAutor", NS).text == "11222333000181"
@@ -200,9 +204,59 @@ def test_evento_de_cancelamento(empresa):
 
 def test_cancelamento_recusa_chave_invalida(empresa):
     with pytest.raises(ErroDeValidacao, match="50 digitos"):
-        dps.montar_evento_cancelamento(empresa, "123", "1", "motivo")
+        dps.montar_evento_cancelamento(empresa, "123", "1", "Valor digitado errado")
 
 
-def test_cancelamento_exige_motivo(empresa):
-    with pytest.raises(ErroDeValidacao, match="motivo"):
-        dps.montar_evento_cancelamento(empresa, "3" * 50, "1", "")
+def test_cancelamento_exige_motivo_com_15_caracteres(empresa):
+    with pytest.raises(ErroDeValidacao, match="15"):
+        dps.montar_evento_cancelamento(empresa, "3" * 50, "1", "Erro")
+
+
+def test_cancelamento_so_aceita_motivos_do_schema(empresa):
+    with pytest.raises(ValueError, match="Motivo"):
+        dps.montar_evento_cancelamento(empresa, "3" * 50, "4", "Valor digitado errado")
+
+
+def test_ordem_do_issqn_segue_o_schema(empresa, nota):
+    xml, _ = dps.montar_xml(nota, empresa)
+    filhos = [etree.QName(e).localname for e in
+              etree.fromstring(xml).find("n:infDPS/n:valores/n:trib/n:tribMun", NS)]
+    assert filhos == ["tribISSQN", "tpRetISSQN", "pAliq"]
+
+
+@pytest.mark.parametrize("campo,valor,trecho", [
+    ("aliquota_iss", Decimal("15"), "0 a 9,99"),
+    ("valor_irrf", Decimal("-1"), "negativo"),
+    ("codigo_tributacao_municipal", "12", "3 digitos"),
+    ("codigo_nbs", "123", "9 digitos"),
+    ("tomador_telefone", "123", "6 a 20"),
+    ("tomador_email", "sem-arroba", "E-mail"),
+    ("serie", "A1", "Serie"),
+    ("codigo_pais_prestacao", "USA", "ISO de 2 letras"),
+])
+def test_formatos_exigidos_pelo_schema(empresa, nota, campo, valor, trecho):
+    setattr(nota, campo, valor)
+    assert any(trecho in p for p in dps.validar(nota, empresa))
+
+
+def test_endereco_no_exterior_incompleto(empresa, nota):
+    nota.tomador_tipo_documento, nota.tomador_documento = "NIF", "X1"
+    nota.tomador_codigo_pais, nota.tomador_cidade_exterior = "US", "Miami"
+    problemas = dps.validar(nota, empresa)
+    assert any("Estado/Provincia" in p for p in problemas)
+    assert any("Codigo postal" in p for p in problemas)
+
+
+def test_competencia_posterior_a_emissao(empresa, nota):
+    from datetime import date
+    from nfse import util
+    nota.data_emissao = util.para_datahora("15/01/2026 10:00")
+    nota.competencia = date(2026, 2, 1)
+    assert any("competencia" in p.lower() for p in dps.validar(nota, empresa))
+
+
+def test_data_de_emissao_no_futuro_e_recusada(empresa, nota):
+    from datetime import timedelta
+    from nfse import util
+    nota.data_emissao = util.agora() + timedelta(days=2)
+    assert any("futuro" in p for p in dps.validar(nota, empresa))

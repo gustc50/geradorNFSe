@@ -19,7 +19,8 @@ cifrada), então você cadastra uma vez e não digita mais.
 | Emissão em lote | Lê a planilha e envia nota por nota, com relatório de cada linha |
 | Resultado na planilha | Grava Status, Chave de acesso, Nº da NFS-e e Mensagem de volta na planilha |
 | Nunca duplica | Linha com chave de acesso preenchida não é reenviada |
-| Simulação | Gera e assina o XML sem enviar — para conferir tudo antes de valer |
+| Simulação | Gera, assina e valida o XML sem enviar — e sem gastar numeração de DPS |
+| Conferência pelo schema oficial | Todo XML é validado contra os XSD oficiais do Portal (pasta `schemas/`) antes do envio |
 | DANFSe | Baixa o PDF da nota autorizada |
 | Consulta e cancelamento | Pela chave de acesso, com registro do evento |
 | Planilha modelo | Gerada pelo próprio sistema, com ajuda em cada coluna e listas de seleção |
@@ -106,13 +107,17 @@ Detalhes que costumam gerar dúvida:
 - **Alíquotas em percentual**: `2` significa 2%.
 - **Datas**: `dd/mm/aaaa`. A competência aceita `mm/aaaa`.
 - **Colunas de seleção** (tributação, retenção...) têm lista suspensa. O sistema
-  usa só o código antes do tracinho.
+  usa só o código antes do tracinho — digitar só o código (`1`) também funciona.
+- **Textos colados do Word/Excel**: aspas curvas, travessões e emojis são
+  ajustados automaticamente para os caracteres que o Portal aceita.
+- **Descrição do serviço** pode ter várias linhas (Alt+Enter na célula).
 
 ### 5. Confira antes de valer
 
 Clique em **Conferir sem enviar (simulação)**. O sistema valida todas as linhas,
-monta e assina o XML, e não envia nada. Os erros aparecem no painel *Andamento*
-com o número da linha.
+monta e assina o XML, confere contra o schema oficial e não envia nada. Os erros
+aparecem no painel *Andamento* com o número da linha. A simulação mostra a
+numeração que as notas receberiam, mas **não gasta** os números.
 
 ### 6. Emita
 
@@ -140,7 +145,7 @@ python nfse_cli.py modelo --saida modelos/modelo_nfse.xlsx
 python nfse_cli.py emitir notas.xlsx --simular
 python nfse_cli.py emitir notas.xlsx --empresa "CONTABIL NGF" --danfse
 python nfse_cli.py consultar "CONTABIL NGF" <chave>
-python nfse_cli.py cancelar "CONTABIL NGF" <chave> --codigo 1 --motivo "Erro de digitação"
+python nfse_cli.py cancelar "CONTABIL NGF" <chave> --codigo 1 --motivo "Valor digitado errado"
 ```
 
 `python nfse_cli.py --help` lista tudo.
@@ -169,7 +174,7 @@ geradorNFSe/
 │   └── emissor.py         emissão em lote
 ├── dados/                 cadastro + certificados + chave (NÃO versionar)
 ├── saida/                 XML, PDF e histórico por empresa
-├── schemas/               coloque aqui os XSD oficiais (opcional)
+├── schemas/               XSD oficiais do layout nacional (v1.01)
 └── tests/                 testes automatizados
 ```
 
@@ -196,7 +201,7 @@ geradorNFSe/
 
 ## Detalhes técnicos
 
-- **DPS layout nacional versão 1.00**, namespace `http://www.sped.fazenda.gov.br/nfse`.
+- **DPS layout nacional versão 1.01**, namespace `http://www.sped.fazenda.gov.br/nfse`.
 - **Assinatura** XMLDSig *enveloped* sobre `infDPS`: canonicalização C14N 1.0
   inclusiva, digest SHA-1, assinatura RSA-SHA1, `KeyInfo` com o certificado.
   A assinatura é conferida localmente antes de cada envio.
@@ -204,7 +209,13 @@ geradorNFSe/
   mTLS com o próprio certificado A1.
   - Produção: `https://sefin.nfse.gov.br/sefinnacional`
   - Homologação: `https://sefin.producaorestrita.nfse.gov.br/SefinNacional`
+- **Validação**: antes de enviar, cada DPS e cada evento são conferidos contra os
+  XSD oficiais em `schemas/` (layout v1.01, cópia do projeto
+  [nfelib](https://github.com/akretion/nfelib), MIT). Quando o Portal publicar
+  uma versão nova do layout, basta trocar os arquivos dessa pasta.
 - **Cancelamento**: evento `e101101` em `POST {base}/nfse/{chave}/eventos`.
+  Motivos aceitos: `1` erro na emissão, `2` serviço não prestado, `9` outros.
+  A descrição precisa ter de 15 a 255 caracteres.
 - Uma emissão **nunca** é repetida automaticamente. Se a resposta se perder
   (timeout), o número é considerado usado e a mensagem orienta a consultar antes
   de reenviar.
@@ -215,9 +226,11 @@ geradorNFSe/
 .venv/bin/python -m pytest
 ```
 
-São 109 testes cobrindo conversão de dados, cofre de senhas, leitura do
+São 165 testes cobrindo conversão de dados, cofre de senhas, leitura do
 certificado, assinatura digital (inclusive detecção de adulteração), montagem
-do XML, leitura/gravação da planilha, cliente da API e emissão em lote.
+do XML em 30+ cenários validados contra o **schema oficial**, leitura/gravação da
+planilha, cliente da API, emissão em lote e um roteiro completo da interface
+gráfica (pulado em máquinas sem tela).
 
 ---
 
@@ -231,6 +244,7 @@ do XML, leitura/gravação da planilha, cliente da API e emissão em lote.
 4. Só então troque o ambiente para **Produção**. O sistema pede confirmação e
    mostra um aviso vermelho quando está nesse modo.
 
-Os códigos de motivo de cancelamento e regras específicas de cada município
-podem mudar: confirme na documentação oficial em
-[gov.br/nfse](https://www.gov.br/nfse) antes de usar em produção.
+Regras específicas de cada município (alíquota, código de tributação municipal,
+obrigatoriedade de campos) não estão no schema e só aparecem na resposta do
+Portal: por isso o teste em homologação é indispensável. Documentação oficial em
+[gov.br/nfse](https://www.gov.br/nfse).

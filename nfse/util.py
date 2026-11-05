@@ -45,6 +45,52 @@ def so_digitos(valor) -> str:
     return _RE_NAO_DIGITO.sub("", texto(valor))
 
 
+# Pontuacao "tipografica" que o Excel/Word colocam sozinhos -> equivalente ASCII.
+_TROCAS_TIPOGRAFICAS = str.maketrans({
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u2032": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2033": '"',
+    "\u2013": "-", "\u2014": "-", "\u2212": "-", "\u2010": "-", "\u2011": "-",
+    "\u2026": "...", "\u2022": "-", "\u00a0": " ", "\u2009": " ", "\u200b": "",
+    "\u20ac": "EUR", "\u2122": "TM", "\t": " ",
+    "\u0141": "L", "\u0142": "l", "\u0152": "OE", "\u0153": "oe", "\u0110": "D", "\u0111": "d",
+})
+
+
+def texto_fiscal(valor, maximo: int | None = None, quebras: bool = False) -> str:
+    """Texto aceito pelo schema da NFS-e (caracteres Latin-1, de '!' a 'y com trema').
+
+    Troca aspas curvas, travessoes e reticencias pelo equivalente simples e
+    descarta o que sobrar fora da faixa permitida (emojis, por exemplo).
+    Com ``quebras=True`` mantem as quebras de linha (so a descricao do servico
+    aceita); nos demais campos elas viram espaco.
+    """
+    if valor is None:
+        return ""
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
+    s = unicodedata.normalize("NFC", str(valor).translate(_TROCAS_TIPOGRAFICAS))
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    permitidos = []
+    for c in s:
+        if c == "\n":
+            permitidos.append("\n" if quebras else " ")
+        elif 0x20 <= ord(c) <= 0xFF and ord(c) not in range(0x7F, 0xA0):
+            permitidos.append(c)
+        else:
+            decomposto = unicodedata.normalize("NFKD", c)
+            permitidos.append("".join(x for x in decomposto if 0x20 <= ord(x) <= 0x7E))
+    s = "".join(permitidos)
+    if quebras:
+        linhas = [re.sub(r"[ ]+", " ", linha).strip() for linha in s.split("\n")]
+        s = "\n".join(linhas).strip("\n")
+        s = re.sub(r"\n{3,}", "\n\n", s)
+    else:
+        s = re.sub(r"\s+", " ", s).strip()
+    if maximo is not None and len(s) > maximo:
+        s = s[:maximo].rstrip()
+    return s
+
+
 def vazio(valor) -> bool:
     return texto(valor) == ""
 
@@ -104,18 +150,14 @@ def moeda(valor) -> str:
     return str(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def percentual(valor, casas: int = 4) -> str:
-    """Formata aliquotas com ate 4 casas decimais, sem zeros sobrando.
+def percentual(valor) -> str:
+    """Formata aliquotas com exatamente 2 casas decimais: 2 -> "2.00".
 
-    2 -> "2", 2,5 -> "2.5", 0,6500 -> "0.65". O XSD aceita qualquer uma dessas
-    formas; manter a mais curta deixa o XML legivel na conferencia.
+    O schema oficial (TSDec1V2 / TSDec2V2) recusa "2.5" e "0.6500": a aliquota
+    precisa ser um inteiro sozinho ou ter exatamente duas casas.
     """
-    d = decimal(valor, Decimal("0")).quantize(
-        Decimal(1).scaleb(-casas), rounding=ROUND_HALF_UP)
-    formatado = format(d, "f")
-    if "." in formatado:
-        formatado = formatado.rstrip("0").rstrip(".")
-    return formatado or "0"
+    d = decimal(valor, Decimal("0"))
+    return str(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def arredondar(valor, casas: int = 2) -> Decimal:
@@ -157,8 +199,11 @@ def para_datahora(valor, padrao: datetime | None = None) -> datetime | None:
         return padrao
     if isinstance(valor, datetime):
         dt = valor
+        # Celula do Excel so com data chega como datetime a meia-noite.
+        if dt.tzinfo is None and dt.time() == time(0, 0):
+            dt = datetime.combine(dt.date(), agora().time().replace(tzinfo=None))
     elif isinstance(valor, date):
-        dt = datetime.combine(valor, time(0, 0))
+        dt = datetime.combine(valor, agora().time().replace(tzinfo=None))
     else:
         s = texto(valor)
         dt = None
@@ -171,7 +216,10 @@ def para_datahora(valor, padrao: datetime | None = None) -> datetime | None:
                 continue
         if dt is None:
             d = para_data(s)
-            dt = datetime.combine(d, datetime.now().time().replace(microsecond=0))
+            # So a data foi informada: usa a hora atual DE BRASILIA, nunca a do
+            # relogio local - senao, num computador em outro fuso, a nota de hoje
+            # poderia sair com horario no futuro e ser recusada pelo Portal.
+            dt = datetime.combine(d, agora().time().replace(tzinfo=None))
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=FUSO_BRASILIA)
     return dt.replace(microsecond=0)

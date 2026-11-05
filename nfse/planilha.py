@@ -119,16 +119,17 @@ COLUNAS: tuple[Coluna, ...] = (
            "010701", "6 digitos da tabela nacional de servicos (item + subitem).",
            apelidos=("ctribnac", "codigo_servico", "cod_servico", "item_lista_servico")),
     Coluna("codigo_tributacao_municipal", "Cod. tributacao municipal", G_SRV, False, 24, "",
-           "Opcional - exigido por alguns municipios.",
+           "Opcional - 3 digitos, exigido por alguns municipios.",
            apelidos=("ctribmun", "codigo_municipal")),
     Coluna("descricao_servico", "Descricao do servico", G_SRV, True, 50,
            "Servicos de assessoria contabil referentes a 01/2026",
            "Ate 2000 caracteres.",
            apelidos=("discriminacao", "descricao", "servico")),
     Coluna("codigo_nbs", "Codigo NBS", G_SRV, False, 14, "",
-           "Obrigatorio em algumas operacoes com o exterior."),
+           "9 digitos. Obrigatorio em algumas operacoes com o exterior."),
     Coluna("numero_interno", "Nro. controle interno", G_SRV, False, 18, "",
-           "Seu numero de pedido/contrato. Nao vai para a numeracao fiscal.",
+           "Seu numero de pedido/contrato (ate 20 letras e numeros; tracos e "
+           "barras sao removidos). Nao vai para a numeracao fiscal.",
            apelidos=("controle_interno", "pedido", "cintcontrib")),
     Coluna("informacoes_complementares", "Informacoes complementares", G_SRV, False, 40, "",
            "Texto livre impresso na nota.",
@@ -151,7 +152,7 @@ COLUNAS: tuple[Coluna, ...] = (
            dominio=tabelas.TRIBUTACAO_ISSQN,
            apelidos=("tribissqn", "tributacao_iss")),
     Coluna("aliquota_iss", "Aliquota ISS (%)", G_ISS, False, 16, "2,00",
-           "Em percentual: 2 significa 2%.",
+           "Em percentual, de 0 a 9,99: 2 significa 2%.",
            apelidos=("aliquota", "aliq_iss", "paliq")),
     Coluna("iss_retido", "Retencao do ISSQN", G_ISS, True, 22, "1",
            "1 nao retido, 2 retido pelo tomador, 3 retido pelo intermediario.",
@@ -167,7 +168,7 @@ COLUNAS: tuple[Coluna, ...] = (
 
     # ---------------- tributos federais ----------------
     Coluna("cst_pis_cofins", "CST PIS/COFINS", G_FED, False, 18, "",
-           "Preencha junto com a retencao de PIS/COFINS.",
+           "Obrigatorio quando houver qualquer informacao de PIS/COFINS.",
            dominio=tabelas.CST_PIS_COFINS),
     Coluna("base_pis_cofins", "Base PIS/COFINS", G_FED, False, 18),
     Coluna("aliquota_pis", "Aliquota PIS (%)", G_FED, False, 16, "", "Ex.: 0,65"),
@@ -175,7 +176,8 @@ COLUNAS: tuple[Coluna, ...] = (
     Coluna("valor_pis", "Valor PIS", G_FED, False, 14, "", apelidos=("pis",)),
     Coluna("valor_cofins", "Valor COFINS", G_FED, False, 16, "", apelidos=("cofins",)),
     Coluna("retencao_pis_cofins", "Retencao PIS/COFINS", G_FED, False, 22, "",
-           "1 retido, 2 nao retido.", dominio=tabelas.RETENCAO_PIS_COFINS),
+           "Escolha na lista qual combinacao de PIS/COFINS/CSLL foi retida.",
+           dominio=tabelas.RETENCAO_PIS_COFINS),
     Coluna("valor_inss", "Valor INSS retido", G_FED, False, 18, "",
            "Retencao previdenciaria (vRetCP).", apelidos=("inss", "vretcp")),
     Coluna("valor_irrf", "Valor IRRF retido", G_FED, False, 18, "", apelidos=("irrf", "ir")),
@@ -269,6 +271,9 @@ def _converter(coluna: Coluna, valor):
         return util.para_datahora(valor)
     if campo == "competencia":
         return util.para_data(valor)
+    if campo == "descricao_servico":
+        # Mantem as quebras de linha da celula: a descricao aceita varias linhas.
+        return "" if valor is None else str(valor).strip()
     if campo in CAMPOS_DOMINIO:
         bruto = tabelas.codigo_da_opcao(valor)
         return bruto.upper() if campo == "tomador_tipo_documento" else bruto

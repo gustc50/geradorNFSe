@@ -83,11 +83,13 @@ class AbaEmpresa(ttk.Frame):
         super().__init__(pai, padding=12)
         self.app = app
         self.empresa = empresa
-        self.fila: queue.Queue[str] = queue.Queue()
+        # A thread de trabalho NUNCA toca a interface: ela so coloca na fila
+        # textos de log ou acoes, que a thread principal executa em _drenar_fila.
+        self.fila: queue.Queue = queue.Queue()
         self.trabalhando = False
         self._montar()
         self._carregar_da_empresa()
-        self.after(150, self._drenar_fila)
+        self._agendamento = self.after(150, self._drenar_fila)
 
     # ------------------------------------------------------------------ #
     # Montagem da tela
@@ -269,12 +271,28 @@ class AbaEmpresa(ttk.Frame):
     # Log
     # ------------------------------------------------------------------ #
     def registrar(self, mensagem: str) -> None:
+        """Pode ser chamado de qualquer thread."""
         self.fila.put(mensagem)
+
+    def na_tela(self, funcao, *argumentos) -> None:
+        """Agenda uma acao na interface. Pode ser chamado de qualquer thread."""
+        self.fila.put((funcao, argumentos))
+
+    def destroy(self) -> None:
+        try:
+            self.after_cancel(self._agendamento)
+        except (tk.TclError, AttributeError):
+            pass
+        super().destroy()
 
     def _drenar_fila(self) -> None:
         try:
             while True:
                 mensagem = self.fila.get_nowait()
+                if isinstance(mensagem, tuple):
+                    funcao, argumentos = mensagem
+                    funcao(*argumentos)
+                    continue
                 marca = ("erro" if "[erro]" in mensagem or "ERRO" in mensagem else
                          "ok" if "[ok]" in mensagem else
                          "aviso" if "[aviso]" in mensagem or "[pulada]" in mensagem else
@@ -285,7 +303,7 @@ class AbaEmpresa(ttk.Frame):
                 self.texto_log.configure(state="disabled")
         except queue.Empty:
             pass
-        self.after(150, self._drenar_fila)
+        self._agendamento = self.after(150, self._drenar_fila)
 
     # ------------------------------------------------------------------ #
     # Carregar / salvar
@@ -331,6 +349,12 @@ class AbaEmpresa(ttk.Frame):
         e.regime_especial = self.combo_regime.codigo()
 
     def salvar(self, silencioso: bool = False) -> bool:
+        if self.app.ocupado:
+            # Durante a emissao o contador de numeracao esta mudando: salvar o
+            # formulario agora poderia voltar o numero da DPS para tras.
+            if not silencioso:
+                messagebox.showinfo(TITULO, "Aguarde o processamento terminar para salvar.")
+            return False
         self._recolher_para_empresa()
         try:
             self.app.config.salvar()
@@ -437,8 +461,9 @@ class AbaEmpresa(ttk.Frame):
         abrir_no_sistema(pasta)
 
     def _preparar_execucao(self) -> bool:
-        if self.trabalhando:
-            messagebox.showinfo(TITULO, "Ja existe um processamento em andamento.")
+        if self.app.ocupado:
+            messagebox.showinfo(TITULO, "Ja existe um processamento em andamento. "
+                                        "Aguarde terminar.")
             return False
         if not self.salvar(silencioso=True):
             return False
@@ -467,22 +492,22 @@ class AbaEmpresa(ttk.Frame):
         self.app.ultima_planilha = Path(planilha)
         titulo = "Simulacao" if simular else "Emissao"
         self.registrar(f"--- {titulo} iniciada ({self.empresa.ambiente}) ---")
+        baixar = bool(self.var_danfse.get()) and not simular   # lido aqui, na thread da tela
         self._executar_em_segundo_plano(
-            lambda: self._rodar_emissao(planilha, simular), titulo)
+            lambda: self._rodar_emissao(planilha, simular, baixar), titulo)
 
-    def _rodar_emissao(self, planilha: str, simular: bool) -> None:
+    def _rodar_emissao(self, planilha: str, simular: bool, baixar_danfse: bool) -> None:
         emissor = Emissor(self.app.config, diretorio_saida=self.app.diretorio_saida,
                           simular=simular, progresso=self.registrar)
         lote = emissor.emitir_planilha(
-            planilha, abas=[self.empresa.nome],
-            baixar_danfse=self.var_danfse.get() and not simular)
+            planilha, abas=[self.empresa.nome], baixar_danfse=baixar_danfse)
         for aviso in lote.avisos:
             self.registrar(f"[aviso] {aviso}")
         for _aba, linha, motivo in lote.ignoradas:
             self.registrar(f"[pulada] linha {linha}: {motivo}")
         self.registrar(f"--- Resultado: {lote.resumo()} ---")
         if lote.emitidas:
-            self.var_chave.set(lote.emitidas[-1].chave_acesso)
+            self.na_tela(self.var_chave.set, lote.emitidas[-1].chave_acesso)
 
     def consultar(self) -> None:
         chave = util.so_digitos(self.var_chave.get())
@@ -539,6 +564,7 @@ class AbaEmpresa(ttk.Frame):
     # ------------------------------------------------------------------ #
     def _executar_em_segundo_plano(self, tarefa, titulo: str) -> None:
         self.trabalhando = True
+        self.app.ocupado = True
         self.botao_emitir.configure(state="disabled")
         self.app.status(f"{titulo} em andamento...")
 
@@ -549,12 +575,16 @@ class AbaEmpresa(ttk.Frame):
                 self.registrar(f"[erro] {exc}")
                 self.registrar(traceback.format_exc())
             finally:
-                self.after(0, self._concluir, titulo)
+                self.na_tela(self._concluir, titulo)
 
         threading.Thread(target=envelope, daemon=True).start()
 
     def _concluir(self, titulo: str) -> None:
         self.trabalhando = False
+        self.app.ocupado = False
+        # A emissao avancou o contador: a tela precisa mostrar o numero novo,
+        # senao o proximo "Salvar" voltaria a numeracao para tras.
+        self.app.atualizar_numeracao()
         self.botao_emitir.configure(state="normal")
         self.app.status(f"{titulo} concluida.")
 
@@ -583,7 +613,7 @@ class JanelaCancelamento(tk.Toplevel):
         self.combo.definir("1")
         self.combo.pack(fill="x", pady=(0, 8))
 
-        ttk.Label(quadro, text="Descricao do motivo").pack(anchor="w")
+        ttk.Label(quadro, text="Descricao do motivo (minimo de 15 caracteres)").pack(anchor="w")
         self.entrada = ttk.Entry(quadro, width=52)
         self.entrada.pack(fill="x", pady=(0, 12))
         self.entrada.focus_set()
@@ -595,8 +625,10 @@ class JanelaCancelamento(tk.Toplevel):
 
     def _confirmar(self) -> None:
         motivo = util.texto(self.entrada.get())
-        if not motivo:
-            messagebox.showwarning(TITULO, "Descreva o motivo do cancelamento.", parent=self)
+        if len(motivo) < tabelas.MOTIVO_MINIMO:
+            messagebox.showwarning(
+                TITULO, f"Descreva o motivo com pelo menos {tabelas.MOTIVO_MINIMO} caracteres "
+                "(exigencia do Portal Nacional).", parent=self)
             return
         self.codigo, self.motivo, self.confirmado = self.combo.codigo(), motivo, True
         self.destroy()
@@ -615,6 +647,7 @@ class Aplicativo(tk.Tk):
         self.diretorio_saida = Path(diretorio_saida)
         self.ultima_planilha: Path | None = None
         self.abas: dict[str, AbaEmpresa] = {}
+        self.ocupado = False
 
         try:
             self.config = Configuracao.carregar(diretorio_dados)
@@ -669,6 +702,10 @@ class Aplicativo(tk.Tk):
 
     def status(self, mensagem: str) -> None:
         self.var_status.set(mensagem)
+
+    def atualizar_numeracao(self) -> None:
+        for aba in self.abas.values():
+            aba.var_proximo.set(str(aba.empresa.proximo_numero))
 
     def planilha_sugerida(self) -> Path | None:
         if self.ultima_planilha and self.ultima_planilha.exists():
@@ -731,6 +768,9 @@ class Aplicativo(tk.Tk):
             self.gerar_modelo()
 
     def remover_empresa(self) -> None:
+        if self.ocupado:
+            messagebox.showinfo(TITULO, "Aguarde o processamento terminar.")
+            return
         aba = self.aba_atual()
         if aba is None:
             messagebox.showinfo(TITULO, "Nenhuma empresa selecionada.")
@@ -774,6 +814,11 @@ class Aplicativo(tk.Tk):
         if aba is None:
             messagebox.showinfo(TITULO, "Cadastre uma empresa primeiro.")
             return
+        if self.ocupado:
+            messagebox.showinfo(TITULO, "Ja existe um processamento em andamento.")
+            return
+        for outra in self.abas.values():   # grava o que estiver digitado em cada aba
+            outra.salvar(silencioso=True)
         planilha = util.texto(aba.var_planilha.get())
         if not planilha or not Path(planilha).exists():
             messagebox.showwarning(TITULO, "Escolha a planilha com as notas.")

@@ -5,10 +5,10 @@ from unittest.mock import patch
 from openpyxl import load_workbook
 
 from nfse import modelo_planilha
-from nfse.api import RespostaEmissao, compactar
+from nfse.api import RespostaEmissao
 from nfse.assinatura import verificar_assinatura
 from nfse.config import Configuracao, Empresa
-from nfse.emissor import STATUS_EMITIDA, STATUS_ERRO, STATUS_SIMULADA, Emissor
+from nfse.emissor import STATUS_EMITIDA, STATUS_ERRO, Emissor
 
 CHAVE = "3" * 50
 
@@ -88,13 +88,26 @@ def test_numeracao_automatica_e_sequencial(config, planilha_modelo, tmp_path):
     empresa = config.obter("EMPRESA EXEMPLO")
     empresa.proximo_numero = 10
     preencher(planilha_modelo, {4: NOTA_VALIDA, 5: NOTA_VALIDA})
-    emissor = Emissor(config, diretorio_saida=tmp_path / "saida", simular=True)
+    emissor = Emissor(config, diretorio_saida=tmp_path / "saida")
 
-    lote = emissor.emitir_planilha(planilha_modelo)
+    with patch("nfse.emissor.ClienteNFSe") as cliente:
+        cliente.return_value.emitir.side_effect = [resposta_ok(0), resposta_ok(1)]
+        lote = emissor.emitir_planilha(planilha_modelo)
     assert [r.numero_dps for r in lote.resultados] == [10, 11]
     assert config.obter("EMPRESA EXEMPLO").proximo_numero == 12
     # o contador sobrevive ao fechamento do programa
     assert Configuracao.carregar(config.diretorio).obter("EMPRESA EXEMPLO").proximo_numero == 12
+
+
+def test_simulacao_mostra_a_numeracao_mas_nao_a_consome(config, planilha_modelo, tmp_path):
+    empresa = config.obter("EMPRESA EXEMPLO")
+    empresa.proximo_numero = 10
+    preencher(planilha_modelo, {4: NOTA_VALIDA, 5: NOTA_VALIDA})
+    lote = Emissor(config, diretorio_saida=tmp_path / "saida",
+                   simular=True).emitir_planilha(planilha_modelo)
+    assert [r.numero_dps for r in lote.resultados] == [10, 11]
+    assert config.obter("EMPRESA EXEMPLO").proximo_numero == 10
+    assert Configuracao.carregar(config.diretorio).obter("EMPRESA EXEMPLO").proximo_numero == 10
 
 
 def test_numero_da_planilha_tem_prioridade(config, planilha_modelo, tmp_path):
@@ -183,7 +196,7 @@ def test_certificado_vencido_bloqueia_a_emissao(tmp_path, planilha_modelo):
 def test_cancelamento_simulado_gera_evento_assinado(config, tmp_path):
     empresa = config.obter("EMPRESA EXEMPLO")
     emissor = Emissor(config, diretorio_saida=tmp_path / "saida", simular=True)
-    resposta = emissor.cancelar(empresa, CHAVE, "1", "Erro de digitacao")
+    resposta = emissor.cancelar(empresa, CHAVE, "1", "Valor digitado errado na nota")
     assert resposta["simulado"] is True
     arquivo = next((tmp_path / "saida" / "empresa_exemplo").glob("EVENTO-*.xml"))
     assert verificar_assinatura(arquivo.read_bytes()) is True

@@ -17,7 +17,6 @@ import csv
 import json
 import traceback
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -144,15 +143,14 @@ class Emissor:
         pasta = self._pasta_da_empresa(empresa)
         try:
             xml_dps, id_dps = dps.montar_xml(nota, empresa)
+            xml_assinado = assinatura.assinar_xml(xml_dps, id_dps, certificado)
+            assinatura.verificar_assinatura(xml_assinado)   # autoteste antes de enviar
 
-            # Conferencia contra o XSD oficial, quando ele estiver em schemas/.
-            problemas_xsd = esquema.validar(xml_dps, "DPS")
+            # Conferencia contra o schema oficial (schemas/DPS_v*.xsd).
+            problemas_xsd = esquema.validar(xml_assinado, "DPS")
             if problemas_xsd:
                 raise ErroDeValidacao(
                     "O XML nao bate com o schema oficial: " + "; ".join(problemas_xsd))
-
-            xml_assinado = assinatura.assinar_xml(xml_dps, id_dps, certificado)
-            assinatura.verificar_assinatura(xml_assinado)   # autoteste antes de enviar
 
             arquivo_dps = pasta / f"DPS-{id_dps}.xml"
             arquivo_dps.write_bytes(xml_assinado)
@@ -257,6 +255,9 @@ class Emissor:
                 continue
 
             cliente = None if self.simular else ClienteNFSe(empresa, certificado)
+            # Na simulacao as notas recebem a numeracao que TERIAM, mas o contador
+            # volta ao valor original no final: conferir nao gasta numero de DPS.
+            numero_antes_da_simulacao = empresa.proximo_numero
             for nota in aba.notas:
                 resultado = self.emitir_nota(empresa, certificado, nota, cliente=cliente)
                 if (baixar_danfse and resultado.status == STATUS_EMITIDA
@@ -270,6 +271,8 @@ class Emissor:
                         resultado.mensagem += f" (DANFSe nao baixada: {exc.mensagem})"
                 lote.resultados.append(resultado)
 
+            if self.simular:
+                empresa.proximo_numero = numero_antes_da_simulacao
             self.config.salvar()   # mantem o contador de numeracao atualizado
 
         if gravar_na_planilha and lote.resultados:
@@ -316,12 +319,16 @@ class Emissor:
 
     # ------------------------------------------------------------------ #
     def cancelar(self, empresa: Empresa, chave_acesso: str, codigo_motivo: str,
-                 motivo: str, sequencial: int = 1) -> dict:
+                 motivo: str) -> dict:
         """Cancela uma NFS-e ja autorizada (evento e101101)."""
         certificado = self.abrir_certificado(empresa)
         xml_evento, id_evento = dps.montar_evento_cancelamento(
-            empresa, chave_acesso, codigo_motivo, motivo, sequencial)
+            empresa, chave_acesso, codigo_motivo, motivo)
         xml_assinado = assinatura.assinar_xml(xml_evento, id_evento, certificado)
+        problemas_xsd = esquema.validar(xml_assinado, "pedRegEvento")
+        if problemas_xsd:
+            raise ErroDeValidacao(
+                "O evento nao bate com o schema oficial: " + "; ".join(problemas_xsd))
 
         pasta = self._pasta_da_empresa(empresa)
         (pasta / f"EVENTO-{id_evento}.xml").write_bytes(xml_assinado)
@@ -354,6 +361,3 @@ class Emissor:
             self._pasta_da_empresa(empresa) / f"DANFSE-{chave_acesso}.pdf")
         return ClienteNFSe(empresa, certificado).baixar_danfse(chave_acesso, caminho)
 
-
-def registrar_data_hora() -> str:
-    return datetime.now().strftime("%d/%m/%Y %H:%M:%S")

@@ -35,10 +35,29 @@ def test_moeda_arredonda_para_duas_casas():
     assert util.moeda(None) == "0.00"
 
 
-def test_percentual_preserva_casas_significativas():
-    assert util.percentual("2") == "2"
-    assert util.percentual("2,5") == "2.5"
+def test_percentual_sempre_com_duas_casas():
+    """O schema recusa "2.5" e "0.6500": precisa ser "2.50" e "0.65"."""
+    assert util.percentual("2") == "2.00"
+    assert util.percentual("2,5") == "2.50"
     assert util.percentual("0,6500") == "0.65"
+    assert util.percentual("7,6") == "7.60"
+
+
+def test_texto_fiscal_troca_pontuacao_tipografica():
+    assert util.texto_fiscal("“Aspas” – travessão… ok") == '"Aspas" - travessão... ok'
+
+
+def test_texto_fiscal_remove_emoji_e_mantem_acentos():
+    assert util.texto_fiscal("Pão de açúcar 🍞") == "Pão de açúcar"
+
+
+def test_texto_fiscal_quebras_de_linha():
+    assert util.texto_fiscal("a\r\nb") == "a b"
+    assert util.texto_fiscal("a\r\nb", quebras=True) == "a\nb"
+
+
+def test_texto_fiscal_respeita_tamanho_maximo():
+    assert util.texto_fiscal("abcdef", maximo=3) == "abc"
 
 
 @pytest.mark.parametrize("entrada,esperado", [
@@ -72,3 +91,14 @@ def test_validacao_de_documentos():
 def test_normalizar_chave_remove_acentos_e_pontuacao():
     assert util.normalizar_chave("Descrição do Serviço") == "descricao_do_servico"
     assert util.normalizar_chave("CNPJ/CPF do tomador") == "cnpj_cpf_do_tomador"
+
+
+def test_data_sem_hora_usa_horario_de_brasilia():
+    """Data sem hora vira 'data + hora atual de Brasilia', nunca a hora local."""
+    from datetime import datetime, timedelta
+    agora = util.agora()
+    dt = util.para_datahora(agora.strftime("%d/%m/%Y"))
+    assert dt.utcoffset() == timedelta(hours=-3)
+    assert abs((dt - agora).total_seconds()) < 5
+    excel = util.para_datahora(datetime(agora.year, agora.month, agora.day))
+    assert abs((excel - agora).total_seconds()) < 5

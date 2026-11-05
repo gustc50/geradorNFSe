@@ -1,0 +1,5 @@
+*.bat text eol=crlf
+*.sh  text eol=lf
+*.xsd text eol=lf
+*.xlsx binary
+*.png  binary

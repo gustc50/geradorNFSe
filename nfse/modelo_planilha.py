@@ -99,7 +99,8 @@ def _montar_aba_tabelas(livro: Workbook) -> dict[int, str]:
         for deslocamento, opcao in enumerate(tabelas.opcoes(dominio)):
             aba.cell(row=3 + deslocamento, column=coluna_atual, value=opcao)
         fim = 2 + len(dominio)
-        referencias[id(dominio)] = f"={ABA_TABELAS}!${letra}$3:${letra}${fim}"
+        # Sem "=" na frente: e assim que o proprio Excel grava a faixa da lista.
+        referencias[id(dominio)] = f"{ABA_TABELAS}!${letra}$3:${letra}${fim}"
         coluna_atual += 1
 
     aba.sheet_state = "visible"
@@ -238,9 +239,12 @@ def montar_aba_empresa(livro: Workbook, nome: str,
                 aba.cell(row=linha, column=indice).number_format = formato
 
         if coluna.dominio and referencias and id(coluna.dominio) in referencias:
+            # errorStyle "warning": avisa sobre valor fora da lista, mas deixa
+            # digitar so o codigo (ex.: 1), que o sistema tambem entende.
             validacao = DataValidation(
                 type="list", formula1=referencias[id(coluna.dominio)],
-                allow_blank=True, showDropDown=False)
+                allow_blank=True, showDropDown=False,
+                showErrorMessage=True, showInputMessage=True, errorStyle="warning")
             validacao.error = ("Escolha um item da lista. O sistema usa apenas o codigo "
                                "antes do tracinho.")
             validacao.errorTitle = "Valor invalido"

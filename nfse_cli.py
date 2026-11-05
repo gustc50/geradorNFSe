@@ -12,7 +12,8 @@ Exemplos:
     python nfse_cli.py emitir notas.xlsx --simular
     python nfse_cli.py emitir notas.xlsx --empresa "CONTABIL NGF" --danfse
     python nfse_cli.py consultar "CONTABIL NGF" 3525...
-    python nfse_cli.py cancelar "CONTABIL NGF" 3525... --codigo 1 --motivo "Erro de digitacao"
+    python nfse_cli.py cancelar "CONTABIL NGF" 3525... --codigo 1 \
+        --motivo "Valor digitado errado na nota"
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from nfse.certificado import ErroDeCertificado, ler_certificado      # noqa: E40
 from nfse.config import Configuracao, Empresa, ErroDeConfiguracao    # noqa: E402
 from nfse.emissor import Emissor                                     # noqa: E402
 from nfse.planilha import ErroDePlanilha                             # noqa: E402
+from nfse.util import ErroDeValidacao                                # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent
 
@@ -263,9 +265,8 @@ def cmd_cancelar(args) -> int:
     emissor = Emissor(config, diretorio_saida=args.saida, simular=args.simular,
                       progresso=escrever)
     try:
-        resposta = emissor.cancelar(empresa, args.chave, args.codigo, args.motivo,
-                                    sequencial=args.sequencial)
-    except (ErroDaApi, ErroDeCertificado) as exc:
+        resposta = emissor.cancelar(empresa, args.chave, args.codigo, args.motivo)
+    except (ErroDaApi, ErroDeCertificado, ErroDeValidacao) as exc:
         escrever(f"ERRO: {exc}")
         return 1
     escrever(str(resposta))
@@ -373,10 +374,9 @@ def construir_parser() -> argparse.ArgumentParser:
     cancelar.add_argument("empresa")
     cancelar.add_argument("chave")
     cancelar.add_argument("--codigo", default="1", choices=sorted(tabelas.MOTIVO_CANCELAMENTO),
-                          help="codigo do motivo")
-    cancelar.add_argument("--motivo", required=True, help="descricao do motivo")
-    cancelar.add_argument("--sequencial", type=int, default=1,
-                          help="numero sequencial do evento (padrao: 1)")
+                          help="1 erro na emissao, 2 servico nao prestado, 9 outros")
+    cancelar.add_argument("--motivo", required=True,
+                          help="descricao do motivo (minimo de 15 caracteres)")
     cancelar.add_argument("--simular", action="store_true",
                           help="gera e assina o evento sem enviar")
     cancelar.add_argument("--sim", action="store_true", help="nao pede confirmacao")

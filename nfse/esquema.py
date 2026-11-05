@@ -1,14 +1,11 @@
-"""Validacao opcional do XML contra o schema oficial (XSD).
+"""Validacao do XML contra o schema oficial (XSD) antes do envio.
 
-O Portal Nacional publica os arquivos ``.xsd`` do layout. Eles nao podem ser
-redistribuidos aqui, mas se voce baixa-los e colocar na pasta ``schemas/``, o
-sistema passa a conferir cada XML antes de enviar - os erros aparecem no log
-com o nome do campo, em vez de virem como rejeicao do Portal.
+A pasta ``schemas/`` ja vem com os XSD oficiais do layout nacional (v1.01).
+Cada DPS e cada evento sao conferidos antes de ir ao Portal Nacional - os erros
+aparecem no log com o nome do campo, em vez de virem como rejeicao.
 
-Baixe em: https://www.gov.br/nfse  (area de documentacao tecnica / layout)
-Coloque em: schemas/DPS_v1.00.xsd  (e os demais arquivos que vierem juntos)
-
-Sem os arquivos, a validacao e simplesmente pulada.
+Quando o Portal publicar uma versao nova, basta trocar os arquivos da pasta.
+Sem arquivos, a validacao e pulada (o sistema continua funcionando).
 """
 
 from __future__ import annotations
@@ -30,8 +27,10 @@ def localizar(nome_base: str, pasta: str | Path | None = None) -> Path | None:
     diretorio = Path(pasta or PASTA_PADRAO)
     if not diretorio.is_dir():
         return None
-    candidatos = sorted(diretorio.glob(f"{nome_base}*.xsd"))
-    return candidatos[0] if candidatos else None
+    candidatos = sorted(diretorio.glob(f"{nome_base}_v*.xsd")) or sorted(
+        diretorio.glob(f"{nome_base}*.xsd"))
+    # Com varias versoes na pasta, vale a mais nova (ordem alfabetica: v1.01 > v1.00).
+    return candidatos[-1] if candidatos else None
 
 
 def carregar(nome_base: str, pasta: str | Path | None = None) -> etree.XMLSchema | None:

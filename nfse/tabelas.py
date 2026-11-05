@@ -1,7 +1,8 @@
 """Tabelas de dominio, enderecos dos ambientes e textos de ajuda.
 
 As listas alimentam as validacoes da planilha modelo e as mensagens de erro.
-Os codigos seguem o layout nacional da NFS-e (DPS versao 1.00).
+Os codigos foram conferidos contra os schemas oficiais do layout nacional
+(tiposSimples_v1.01.xsd, incluido na pasta schemas/).
 """
 
 from __future__ import annotations
@@ -68,6 +69,7 @@ REGIME_ESPECIAL = {
     "4": "Notario ou registrador",
     "5": "Profissional autonomo",
     "6": "Sociedade de profissionais",
+    "9": "Outros",
 }
 
 TRIBUTACAO_ISSQN = {
@@ -84,8 +86,16 @@ RETENCAO_ISSQN = {
 }
 
 RETENCAO_PIS_COFINS = {
-    "1": "Retido",
-    "2": "Nao retido",
+    "0": "PIS/COFINS/CSLL nao retidos",
+    "1": "PIS/COFINS retidos",
+    "2": "PIS/COFINS nao retidos",
+    "3": "PIS/COFINS/CSLL retidos",
+    "4": "PIS/COFINS retidos, CSLL nao retido",
+    "5": "PIS retido, COFINS/CSLL nao retidos",
+    "6": "COFINS retido, PIS/CSLL nao retidos",
+    "7": "PIS nao retido, COFINS/CSLL retidos",
+    "8": "PIS/COFINS nao retidos, CSLL retido",
+    "9": "COFINS nao retido, PIS/CSLL retidos",
 }
 
 TIPO_IMUNIDADE = {
@@ -104,27 +114,53 @@ TIPO_DOCUMENTO_TOMADOR = {
     "SEM": "Tomador nao identificado",
 }
 
-# CST de PIS/COFINS mais usados na prestacao de servicos.
+# CST de PIS/COFINS - lista completa do schema oficial (TSTipoCST).
 CST_PIS_COFINS = {
     "00": "Nenhum",
-    "01": "Operacao tributavel com aliquota basica",
-    "02": "Operacao tributavel com aliquota diferenciada",
-    "04": "Operacao tributavel monofasica - revenda a aliquota zero",
-    "05": "Operacao tributavel por substituicao tributaria",
-    "06": "Operacao tributavel a aliquota zero",
-    "07": "Operacao isenta da contribuicao",
-    "08": "Operacao sem incidencia da contribuicao",
-    "09": "Operacao com suspensao da contribuicao",
+    "01": "Tributavel com aliquota basica",
+    "02": "Tributavel com aliquota diferenciada",
+    "03": "Tributavel com aliquota por unidade de medida",
+    "04": "Tributavel monofasica - revenda a aliquota zero",
+    "05": "Tributavel por substituicao tributaria",
+    "06": "Tributavel a aliquota zero",
+    "07": "Isenta da contribuicao",
+    "08": "Sem incidencia da contribuicao",
+    "09": "Com suspensao da contribuicao",
+    "49": "Outras operacoes de saida",
+    "50": "Credito - receita tributada no mercado interno",
+    "51": "Credito - receita nao tributada no mercado interno",
+    "52": "Credito - receita de exportacao",
+    "53": "Credito - receitas tributadas e nao tributadas no MI",
+    "54": "Credito - receitas tributadas no MI e de exportacao",
+    "55": "Credito - receitas nao tributadas no MI e de exportacao",
+    "56": "Credito - receitas tributadas, nao tributadas e exportacao",
+    "60": "Credito presumido - receita tributada no MI",
+    "61": "Credito presumido - receita nao tributada no MI",
+    "62": "Credito presumido - receita de exportacao",
+    "63": "Credito presumido - receitas tributadas e nao tributadas no MI",
+    "64": "Credito presumido - receitas tributadas no MI e exportacao",
+    "65": "Credito presumido - receitas nao tributadas no MI e exportacao",
+    "66": "Credito presumido - receitas tributadas, nao tributadas e exportacao",
+    "67": "Credito presumido - outras operacoes",
+    "70": "Aquisicao sem direito a credito",
+    "71": "Aquisicao com isencao",
+    "72": "Aquisicao com suspensao",
+    "73": "Aquisicao a aliquota zero",
+    "74": "Aquisicao sem incidencia da contribuicao",
+    "75": "Aquisicao por substituicao tributaria",
+    "98": "Outras operacoes de entrada",
+    "99": "Outras operacoes",
 }
 
-# Motivos de cancelamento do evento e101101.
+# Motivos de cancelamento do evento e101101 (TSCodJustCanc do schema oficial).
 MOTIVO_CANCELAMENTO = {
     "1": "Erro na emissao",
     "2": "Servico nao prestado",
-    "3": "Erro de assinatura",
-    "4": "Duplicidade da nota",
-    "5": "Erro de processamento",
+    "9": "Outros",
 }
+
+# A descricao do motivo do cancelamento precisa ter de 15 a 255 caracteres.
+MOTIVO_MINIMO = 15
 
 SIM_NAO = {"S": "Sim", "N": "Nao"}
 

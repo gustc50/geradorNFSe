@@ -112,6 +112,18 @@ class Empresa:
         except ValueError as exc:
             erros.append(str(exc))
 
+        # Formatos exigidos pelo schema oficial
+        if self.inscricao_municipal and len(util.so_digitos(self.inscricao_municipal)) > 15:
+            erros.append("Inscricao municipal pode ter no maximo 15 digitos.")
+        telefone = util.so_digitos(self.telefone)
+        if telefone and not 6 <= len(telefone) <= 20:
+            erros.append("Telefone da empresa deve ter de 6 a 20 digitos.")
+        if self.email and ("@" not in self.email or len(self.email.strip()) > 80):
+            erros.append(f"E-mail da empresa invalido: {self.email!r}.")
+        serie = util.texto(self.serie_padrao)
+        if serie and not (serie.isdigit() and len(serie) <= 5):
+            erros.append(f"Serie padrao deve ter de 1 a 5 digitos: {serie!r}.")
+
         if not self.certificado_arquivo:
             erros.append("Certificado digital A1 (.pfx) nao cadastrado.")
         elif not Path(self.certificado_arquivo).exists():

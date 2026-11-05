@@ -1,13 +1,15 @@
-Pasta opcional para os arquivos .xsd do layout nacional da NFS-e.
+Schemas oficiais (XSD) do layout nacional da NFS-e - versao 1.01.
 
-Se voce baixar os schemas oficiais do Portal Nacional (area de documentacao
-tecnica em https://www.gov.br/nfse) e colocar os arquivos aqui, o sistema passa
-a conferir cada XML contra o schema antes de enviar. Assim os erros de
-preenchimento aparecem no log com o nome do campo, em vez de virem como
-rejeicao do Portal.
+Com estes arquivos aqui, o sistema confere cada XML (DPS e evento de
+cancelamento) contra o schema oficial ANTES de enviar ao Portal Nacional.
+Erros de preenchimento aparecem no log com o nome do campo, em vez de virem
+como rejeicao do Portal.
 
-O arquivo principal e o DPS_v1.00.xsd (mantenha junto os arquivos que ele
-importa, como o de tipos basicos).
+Origem: pacote de schemas publicado pelo Sistema Nacional NFS-e, na copia
+mantida pelo projeto nfelib (https://github.com/akretion/nfelib, licenca MIT),
+versao 3.2.0 - nfelib/nfse/schemas/v1_0/.
 
-Sem os arquivos, essa conferencia extra e simplesmente pulada - o sistema
-continua funcionando normalmente.
+Quando o Portal publicar uma versao nova do layout, substitua os arquivos desta
+pasta pelos novos. O sistema usa automaticamente o arquivo DPS_v*.xsd e o
+pedRegEvento_v*.xsd que encontrar aqui. Se a pasta ficar vazia, a conferencia
+e simplesmente pulada.

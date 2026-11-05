@@ -103,7 +103,8 @@ COLUNAS: tuple[Coluna, ...] = (
 
     # ---------------- exterior ----------------
     Coluna("tomador_codigo_pais", "Pais do tomador", G_EXT, False, 16, "",
-           "Somente para tomador no exterior. Codigo ISO de 2 letras (ex.: US).",
+           "Somente para tomador no EXTERIOR: codigo ISO de 2 letras (ex.: US). "
+           "Cliente no Brasil: deixe vazio.",
            apelidos=("pais_tomador", "cod_pais_tomador")),
     Coluna("tomador_cidade_exterior", "Cidade (exterior)", G_EXT, False, 20),
     Coluna("tomador_estado_exterior", "Estado/Provincia (exterior)", G_EXT, False, 22),
@@ -114,12 +115,14 @@ COLUNAS: tuple[Coluna, ...] = (
            "3550308", "Vazio usa o municipio do emitente.",
            apelidos=("municipio_prestacao", "local_prestacao", "cod_mun_prestacao")),
     Coluna("codigo_pais_prestacao", "Pais da prestacao", G_SRV, False, 16, "",
-           "Preencha apenas quando o servico for prestado fora do Brasil."),
+           "Somente se o servico foi prestado FORA do Brasil (ex.: US). "
+           "Servico no Brasil: deixe vazio."),
     Coluna("codigo_tributacao_nacional", "Cod. tributacao nacional", G_SRV, True, 24,
            "010701", "6 digitos da tabela nacional de servicos (item + subitem).",
            apelidos=("ctribnac", "codigo_servico", "cod_servico", "item_lista_servico")),
     Coluna("codigo_tributacao_municipal", "Cod. tributacao municipal", G_SRV, False, 24, "",
-           "Opcional - 3 digitos, exigido por alguns municipios.",
+           "Opcional - 3 digitos, so se o seu municipio exigir. Nao repita aqui o "
+           "codigo nacional de 6 digitos.",
            apelidos=("ctribmun", "codigo_municipal")),
     Coluna("descricao_servico", "Descricao do servico", G_SRV, True, 50,
            "Servicos de assessoria contabil referentes a 01/2026",
@@ -383,6 +386,23 @@ def ler(caminho: str | Path, abas: list[str] | None = None,
         return resultado
     finally:
         livro.close()
+
+
+def planilha_bloqueada(caminho: str | Path) -> bool:
+    """True quando outro programa (o Excel, no Windows) esta com o arquivo aberto."""
+    try:
+        with open(Path(caminho).expanduser(), "r+b"):
+            return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+MENSAGEM_PLANILHA_ABERTA = (
+    "A planilha {nome} esta aberta no Excel. Feche o arquivo e clique em emitir de "
+    "novo. Nenhuma nota foi enviada. (O sistema precisa gravar a chave de cada nota "
+    "na planilha: e isso que impede a mesma nota de ser emitida duas vezes.)")
 
 
 def gravar_resultados(caminho: str | Path, resultados_por_aba: dict[str, dict[int, dict]]) -> Path:

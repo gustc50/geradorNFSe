@@ -34,6 +34,14 @@ from nfse import modelo_planilha, tabelas, util                      # noqa: E40
 from nfse.certificado import ErroDeCertificado, ler_certificado      # noqa: E402
 from nfse.config import Configuracao, Empresa, ErroDeConfiguracao    # noqa: E402
 from nfse.emissor import Emissor                                     # noqa: E402
+from nfse.api import ErroDaApi                                       # noqa: E402
+from nfse.planilha import (MENSAGEM_PLANILHA_ABERTA, ErroDePlanilha,  # noqa: E402
+                           planilha_bloqueada)
+from nfse.util import ErroDeValidacao                                # noqa: E402
+
+# Erros com mensagem pronta para o usuario: vao para o log sem rastreamento tecnico.
+ERROS_ESPERADOS = (ErroDePlanilha, ErroDeConfiguracao, ErroDeCertificado, ErroDaApi,
+                   ErroDeValidacao)
 
 TITULO = "Gerador de NFS-e - Portal Nacional"
 COR_FUNDO = "#F4F6F9"
@@ -489,6 +497,11 @@ class AbaEmpresa(ttk.Frame):
             messagebox.showwarning(TITULO, "Escolha a planilha com as notas.")
             return
 
+        if not simular and planilha_bloqueada(planilha):
+            messagebox.showwarning(TITULO, MENSAGEM_PLANILHA_ABERTA.format(
+                nome=Path(planilha).name))
+            return
+
         if not simular and self.empresa.ambiente == "producao":
             if not messagebox.askyesno(
                     TITULO,
@@ -578,6 +591,8 @@ class AbaEmpresa(ttk.Frame):
         def envelope() -> None:
             try:
                 tarefa()
+            except ERROS_ESPERADOS as exc:
+                self.registrar(f"[erro] {exc}")
             except Exception as exc:  # noqa: BLE001 - erro vai para o log da aba
                 self.registrar(f"[erro] {exc}")
                 self.registrar(traceback.format_exc())
@@ -829,6 +844,10 @@ class Aplicativo(tk.Tk):
         planilha = util.texto(aba.var_planilha.get())
         if not planilha or not Path(planilha).exists():
             messagebox.showwarning(TITULO, "Escolha a planilha com as notas.")
+            return
+        if planilha_bloqueada(planilha):
+            messagebox.showwarning(TITULO, MENSAGEM_PLANILHA_ABERTA.format(
+                nome=Path(planilha).name))
             return
         producao = [e.nome for e in self.config.empresas if e.ambiente == "producao"]
         aviso = ("\n\nEm PRODUCAO (valor fiscal): " + ", ".join(producao)) if producao else ""

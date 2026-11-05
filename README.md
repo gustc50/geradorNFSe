@@ -252,7 +252,7 @@ Os XSD de cada layout ficam em `schemas/anterior/` e `schemas/nt009/`.
 .venv/bin/python -m pytest
 ```
 
-São 219 testes cobrindo conversão de dados, cofre de senhas, leitura do
+São 232 testes cobrindo conversão de dados, cofre de senhas, leitura do
 certificado, assinatura digital (inclusive detecção de adulteração), montagem
 do XML em 30+ cenários validados contra o **schema oficial dos dois layouts**, leitura/gravação da
 planilha, cliente da API, emissão em lote e um roteiro completo da interface

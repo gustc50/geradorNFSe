@@ -226,7 +226,7 @@ def test_planilha_bloqueada_nao_perde_as_chaves(config, planilha_modelo, tmp_pat
         lote = emissor.emitir_planilha(planilha_modelo)
 
     assert len(lote.emitidas) == 1
-    assert any("Feche o arquivo no Excel" in aviso for aviso in lote.avisos)
+    assert any("AUTORIZADAS" in aviso and "copie" in aviso for aviso in lote.avisos)
     csv_gerado = next(saida.glob("resultados-*.csv"))
     conteudo = csv_gerado.read_text(encoding="utf-8-sig")
     assert CHAVE in conteudo and "EMITIDA" in conteudo
@@ -268,3 +268,46 @@ def test_exemplo_intocado_nao_gera_aviso(config, planilha_modelo, tmp_path):
                    simular=True).emitir_planilha(planilha_modelo)
     assert lote.avisos == []
     assert "linha 4" in lote.ignoradas[0][2]
+
+
+
+# --------------------------------------------------------------------------- #
+# Planilha aberta no Excel
+# --------------------------------------------------------------------------- #
+def test_emissao_nao_comeca_com_a_planilha_aberta_no_excel(config, planilha_modelo, tmp_path):
+    """Sem poder gravar a chave, a nota seria emitida de novo na proxima vez."""
+    import pytest
+    from nfse.planilha import ErroDePlanilha
+    preencher(planilha_modelo, {4: NOTA_VALIDA})
+    with patch("nfse.emissor.mod_planilha.planilha_bloqueada", return_value=True), \
+         patch("nfse.emissor.ClienteNFSe") as cliente:
+        with pytest.raises(ErroDePlanilha, match="aberta no Excel"):
+            Emissor(config, diretorio_saida=tmp_path / "saida").emitir_planilha(planilha_modelo)
+    cliente.assert_not_called()
+
+
+def test_simulacao_funciona_com_a_planilha_aberta(config, planilha_modelo, tmp_path):
+    preencher(planilha_modelo, {4: NOTA_VALIDA})
+    with patch("nfse.emissor.mod_planilha.planilha_bloqueada", return_value=True), \
+         patch("nfse.emissor.mod_planilha.gravar_resultados", side_effect=PermissionError("aberta")):
+        lote = Emissor(config, diretorio_saida=tmp_path / "saida",
+                       simular=True).emitir_planilha(planilha_modelo)
+    assert len(lote.simuladas) == 1
+    assert any("nao ha risco" in aviso for aviso in lote.avisos)
+
+
+def test_aviso_da_planilha_nao_sai_duplicado_no_log(config, planilha_modelo, tmp_path):
+    preencher(planilha_modelo, {4: NOTA_VALIDA})
+    log = []
+    with patch("nfse.emissor.mod_planilha.gravar_resultados", side_effect=PermissionError("x")):
+        lote = Emissor(config, diretorio_saida=tmp_path / "saida", simular=True,
+                       progresso=log.append).emitir_planilha(planilha_modelo)
+    # o aviso vai em lote.avisos (a tela mostra); o andamento nao repete
+    assert lote.avisos and not any("nao foi gravado" in linha for linha in log)
+
+
+def test_detecta_arquivo_bloqueado():
+    from nfse.planilha import planilha_bloqueada
+    with patch("builtins.open", side_effect=PermissionError(13, "Permission denied")):
+        assert planilha_bloqueada("qualquer.xlsx") is True
+    assert planilha_bloqueada(__file__) is False

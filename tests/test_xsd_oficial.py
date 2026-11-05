@@ -196,3 +196,40 @@ def test_emissor_valida_no_schema_antes_de_enviar(config, nota, tmp_path, monkey
         resultado = emissor.emitir_nota(empresa, emissor.abrir_certificado(empresa), nota)
     cliente.return_value.emitir.assert_not_called()
     assert resultado.status == STATUS_ERRO and "schema oficial" in resultado.mensagem
+
+
+
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_linha_real_com_pais_brasil_e_codigo_repetido(layout, nota, empresa, certificado):
+    """Linha como veio da planilha da PlenaMed em homologacao (nov/2026)."""
+    nota.tomador_codigo_pais = "BRASIL"
+    nota.codigo_pais_prestacao = "BRASIL"
+    nota.codigo_tributacao_nacional = "040101"
+    nota.codigo_tributacao_municipal = "040101"
+    assert dps.validar(nota, empresa, layout) == []
+    xml, identificador = dps.montar_xml(nota, empresa, layout=layout)
+    raiz = etree.fromstring(xml)
+    assert raiz.find(".//{*}cLocPrestacao") is not None
+    assert raiz.find(".//{*}cPaisPrestacao") is None
+    assert raiz.find(".//{*}endExt") is None
+    assert raiz.find(".//{*}cTribMun") is None
+    assert raiz.find(".//{*}cTribNac").text == "040101"
+    conferir(assinar_xml(xml, identificador, certificado), layout)
+
+
+@pytest.mark.parametrize("pais", ["BR", "br", "Brasil", "BRA", "Brazil"])
+def test_formas_de_escrever_brasil(pais, nota, empresa):
+    nota.codigo_pais_prestacao = pais
+    assert dps.validar(nota, empresa) == []
+
+
+def test_codigo_municipal_de_6_digitos_diferente_do_nacional(nota, empresa):
+    nota.codigo_tributacao_municipal = "040102"
+    problemas = dps.validar(nota, empresa)
+    assert any("Cod. tributacao nacional" in p for p in problemas)
+
+
+def test_pais_estrangeiro_continua_valendo(nota, empresa):
+    nota.codigo_pais_prestacao = "pt"
+    xml, _ = dps.montar_xml(nota, empresa)
+    assert etree.fromstring(xml).find(".//{*}cPaisPrestacao").text == "PT"

@@ -265,6 +265,13 @@ class Emissor:
                         baixar_danfse: bool = False) -> ResultadoLote:
         """Le a planilha e emite as notas de todas as abas (ou das abas pedidas)."""
         lote = ResultadoLote(planilha=str(caminho))
+        # Emissao de verdade com a planilha aberta no Excel: a chave das notas
+        # autorizadas nao poderia ser gravada e elas seriam emitidas de novo na
+        # proxima vez. Entao nada e enviado.
+        if (not self.simular and gravar_na_planilha
+                and mod_planilha.planilha_bloqueada(caminho)):
+            raise mod_planilha.ErroDePlanilha(
+                mod_planilha.MENSAGEM_PLANILHA_ABERTA.format(nome=Path(caminho).name))
         leitura = mod_planilha.ler(caminho, abas=abas, somente_pendentes=somente_pendentes)
 
         for nome_aba, aba in leitura.items():
@@ -334,11 +341,17 @@ class Emissor:
                 # As notas ja foram emitidas: as chaves nao podem se perder
                 # porque a planilha estava aberta no Excel.
                 alternativa = self.salvar_resultados_avulsos(lote)
-                aviso = (f"Nao consegui escrever na planilha ({exc}). "
-                         f"Feche o arquivo no Excel e confira o resultado em "
-                         f"{alternativa}.")
+                if lote.emitidas:
+                    aviso = (f"ATENCAO: {len(lote.emitidas)} nota(s) foram AUTORIZADAS, mas a "
+                             f"planilha foi aberta no Excel durante a emissao e a chave nao "
+                             f"pode ser gravada nela ({exc}). Antes de emitir de novo, copie "
+                             f"Status e Chave de acesso do arquivo {alternativa} para a "
+                             f"planilha - senao essas notas serao emitidas outra vez.")
+                else:
+                    aviso = (f"O resultado nao foi gravado na planilha porque ela esta "
+                             f"aberta no Excel (nenhuma nota foi autorizada, entao nao ha "
+                             f"risco). Detalhes em {alternativa}.")
                 lote.avisos.append(aviso)
-                self._avisar(f"[aviso] {aviso}")
         return lote
 
     def salvar_resultados_avulsos(self, lote: "ResultadoLote") -> Path:

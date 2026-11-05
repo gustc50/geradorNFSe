@@ -129,9 +129,36 @@ class Nota:
 # --------------------------------------------------------------------------- #
 # Validacao
 # --------------------------------------------------------------------------- #
+# Formas de escrever "Brasil" nas colunas de pais (que sao para o exterior).
+PAISES_BRASIL = {"br", "bra", "brasil", "brazil", "1058"}
+
+
+def _e_brasil(valor) -> bool:
+    return util.normalizar_chave(valor) in PAISES_BRASIL
+
+
+def normalizar(nota: Nota) -> Nota:
+    """Corrige preenchimentos comuns que nao mudam o sentido da nota.
+
+    * "BRASIL"/"BR" nas colunas de pais: essas colunas sao so para o exterior,
+      entao Brasil equivale a deixa-las vazias (operacao nacional);
+    * codigo de tributacao municipal igual ao nacional (6 digitos): o codigo foi
+      repetido na coluna errada; o municipal e opcional, entao fica vazio.
+    """
+    if _e_brasil(nota.tomador_codigo_pais):
+        nota.tomador_codigo_pais = ""
+    if _e_brasil(nota.codigo_pais_prestacao):
+        nota.codigo_pais_prestacao = ""
+    municipal = util.so_digitos(nota.codigo_tributacao_municipal)
+    if len(municipal) == 6 and municipal == util.so_digitos(nota.codigo_tributacao_nacional):
+        nota.codigo_tributacao_municipal = ""
+    return nota
+
+
 def validar(nota: Nota, empresa: Empresa, layout: str | None = None) -> list[str]:
     """Confere a nota antes de gerar o XML. Devolve a lista de problemas."""
     layout = layout or empresa.layout_efetivo()
+    normalizar(nota)
     erros: list[str] = []
 
     def exigir(condicao: bool, mensagem: str) -> None:
@@ -215,7 +242,9 @@ def validar(nota: Nota, empresa: Empresa, layout: str | None = None) -> list[str
     if util.texto(nota.codigo_tributacao_municipal):
         exigir(len(util.so_digitos(nota.codigo_tributacao_municipal)) == 3,
                "Codigo de tributacao municipal deve ter 3 digitos: "
-               f"{nota.codigo_tributacao_municipal!r}.")
+               f"{nota.codigo_tributacao_municipal!r}. O codigo de 6 digitos (item e "
+               "subitem da lista nacional, ex.: 040101) vai na coluna 'Cod. tributacao "
+               "nacional'; se o seu municipio nao exige codigo municipal, deixe vazio.")
     if util.texto(nota.codigo_nbs):
         exigir(len(util.so_digitos(nota.codigo_nbs)) == 9,
                f"Codigo NBS deve ter 9 digitos: {nota.codigo_nbs!r}.")
@@ -537,6 +566,7 @@ def montar_xml(nota: Nota, empresa: Empresa, *, validar_antes: bool = True,
     layout = layout or empresa.layout_efetivo()
     if layout not in (tabelas.LAYOUT_ANTERIOR, tabelas.LAYOUT_NT009):
         raise ValueError(f"Layout invalido: {layout!r}")
+    normalizar(nota)
     if validar_antes:
         problemas = validar(nota, empresa, layout)
         if problemas:

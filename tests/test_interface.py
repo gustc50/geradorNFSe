@@ -202,6 +202,17 @@ def test_roteiro_completo_da_interface(tmp_path):
             a.emitir_tudo(); esperar(aba)
         resultados.append(ok("Resultado geral" in log(aba) and not a.ocupado, "emitir em todas as abas conclui"))
 
+        # 11c. Planilha aberta no Excel: avisa e nao envia nada
+        aba = a.abas["CONTABIL NGF"]
+        dialogos.clear()
+        with patch.object(gui, "planilha_bloqueada", return_value=True), \
+             patch("nfse.emissor.ClienteNFSe") as cliente:
+            aba.emitir(simular=False)
+            esperar(aba)
+            resultados.append(ok(any("aberta no Excel" in d for d in dialogos)
+                                 and not cliente.called,
+                                 "planilha aberta no Excel: avisa e nao envia"))
+
         # 12. Remover empresa
         with patch.object(gui.messagebox, "askyesno", responde(True)):
             a.remover_empresa()
